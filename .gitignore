@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.j41-keys.json
+.j41-keys.json
+*.wif
+*.log
+.DS_Store

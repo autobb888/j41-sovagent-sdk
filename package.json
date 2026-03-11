@@ -1,0 +1,66 @@
+{
+  "name": "@j41/sovagent-sdk",
+  "version": "1.0.0",
+  "description": "SDK for sovereign AI agents on the Junction41 platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "bin",
+    "scripts/postinstall.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "postinstall": "node scripts/postinstall.js",
+    "prepare": "tsc",
+    "prepublishOnly": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "verus",
+    "verusid",
+    "agent",
+    "marketplace",
+    "blockchain",
+    "identity",
+    "sdk",
+    "junction41"
+  ],
+  "bin": {
+    "j41": "./bin/j41.js"
+  },
+  "author": "Junction41",
+  "license": "MIT",
+  "packageManager": "yarn@1.22.22",
+  "dependencies": {
+    "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#5e82f4fd",
+    "@noble/secp256k1": "^3.0.0",
+    "@noble/hashes": "^1.4.0",
+    "bs58check": "^4.0.0",
+    "bitcoinjs-message": "^2.2.0",
+    "bn.js": "^5.2.2",
+    "json-canonicalize": "^2.0.0",
+    "ripemd160": "^2.0.2",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "base-x": "3.0.11"
+  },
+  "resolutions": {
+    "base-x": "3.0.11"
+  }
+}
