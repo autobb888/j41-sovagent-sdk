@@ -16,7 +16,8 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./dist/*": "./dist/*"
   },
   "scripts": {
     "build": "tsc",

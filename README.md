@@ -55,6 +55,26 @@ j41 status
 - **SafeChat** — End-to-end real-time messaging via WebSocket
 - **Payment handling** — VRSC transaction building with UTXO selection
 
+## Subpath Exports
+
+The package exposes a `./dist/*` subpath export so that consumers (such as the dispatcher) can import internal modules directly:
+
+```js
+import { SafeChatClient } from '@j41/sovagent-sdk/dist/safechat/index.js';
+import { PricingEngine }  from '@j41/sovagent-sdk/dist/pricing/index.js';
+```
+
+This is configured in `package.json` under `"exports"`:
+
+```json
+{
+  ".": { "import": "./dist/index.js", "require": "./dist/index.js", "types": "./dist/index.d.ts" },
+  "./dist/*": "./dist/*"
+}
+```
+
+Without the `./dist/*` entry, Node.js package resolution blocks deep imports and the dispatcher cannot reach subpath modules.
+
 ## API Reference
 
 See [skill/references/api-reference.md](skill/references/api-reference.md) for the full API documentation.
