@@ -1,57 +1,171 @@
 import type { AgentProfileInput, ServiceInput } from './finalize.js';
 
+// --- Constants ---
+
+export const DATA_DESCRIPTOR_KEY = 'i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv';
+
+export const PARENT_KEYS = {
+  agent:    'i8XMutgp1MRNoFoHQuzZ4ReowJd9NvCgDP', // agentplatform::agent
+  service:  'i8pfR86vr8qbTPHbhmNQFJo8MYSWKv2TZD', // agentplatform::svc
+  review:   'iMTQf3r1icnRfKLNtr5eByLKXZfsSzUt5f', // agentplatform::review
+  session:  'iGxK7ke8RptD2mkhmUgjMASFysopezAT4n', // agentplatform::session
+  platform: 'iMc951yUdCup5rFgZb8nwDFhkdd8Fktg2a', // agentplatform::platform
+} as const;
+
 export const VDXF_KEYS = {
   agent: {
-    version: 'iBShCc1dESnTq25WkxzrKGjHvHwZFSoq6b',
-    type: 'i9YN6ovGcotCnFdNyUtNh72Nw11WcBuD8y',
-    name: 'i3oa8uNjgZjmC1RS8rg1od8czBP8bsh5A8',
-    description: 'i9Ww2jR4sFt7nzdc5vRy5MHUCjTWULXCqH',
-    status: 'iNCvffXEYWNBt1K5izxKFSFKBR5LPAAfxW',
-    capabilities: 'i7Aumh6Akeq7SC8VJBzpmJrqKNCvREAWMA',
-    endpoints: 'i9n5Vu8fjXLP5CxzcdpwHbSzaW22dJxvHc',
-    protocols: 'iFQzXU4V6am1M9q6LGBfR4uyNAtjhJiW2d',
-    owner: 'i5uUotnF2LzPci3mkz9QaozBtFjeFtAw45',
-    services: 'iGVUNBQSNeGzdwjA4km5z6R9h7T2jao9Lz',
-    tags: 'iJ3Vh2auC5VRbTKtjvKr9tWg515xAHKzN7',
-    website: 'iMGHWAQgGM4VSDfsRTHwBipbwMemt9WdP8',
-    avatar: 'iR5a34uDHJLquQgvffXWZ7pSU8spiFEgzh',
-    category: 'iGzkSnpGYjTy3eG2FakUDQrXgFMGyCvTGi',
+    name: 'iRQbTzu3EywTKp1V7f2fQBYrWZaN8nmruT',
+    type: 'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',
+    description: 'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',
+    status: 'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',
+    owner: 'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu',
+    version: 'iEU6E9tmvSEXohKD6frHajc8jV8K2Pw75y',
+    capabilities: 'iKvdcPPkopuPsRPbfNZajRS6XrM2naqBkS',
+    endpoints: 'i5wCnfSKQNGjzCEVYJFAbupki1Jzn9PhbX',
+    protocols: 'i5HYZJ4ngrNkRTTotMgUXEVeNXpJX1YLE1',
+    services: 'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',
+    tags: 'iGgajhcBKG2Pbg62JKGfRnSzFtaaVxVMBG',
+    website: 'i8fhxWw67oyxpC5BkZnNParN6yeCBNa4ht',
+    avatar: 'iFX1zmLM7k5mptZ4TAyhGTU7xMf11pbLco',
+    category: 'iLDxWHYa2b8VmrNcwLLtaHQPjuvvuYk3pS',
   },
   service: {
-    name: 'iNTrSV1bqDAoaGRcpR51BeoS5wQvQ4P9Qj',
-    description: 'i7ZUWAqwLu9b4E8oXZq4uX6X5W6BJnkuHz',
-    price: 'iLjLxTk1bkEd7SAAWT27VQ7ECFuLtTnuKv',
-    currency: 'iANfkUFM797eunQt4nFV3j7SvK8pUkfsJe',
-    category: 'iGiUqVQcdLC3UAj8mHtSyWNsAKdEVXUFVC',
-    turnaround: 'iNGq3xh28oV2U3VmMtQ3gjMX8jrH1ohKfp',
-    status: 'iNbPugdyVSCv54zsZs68vAfvifcf14btX2',
+    name: 'iSBNgN2BMkNVfQnTCkhjhi8q1aDT9sHUrf',
+    description: 'iDPdLKnbxvM8MCRhizzBtajPjh1w3TWTtN',
+    price: 'iBkuQQUjw9pA4f8oFc3BPK5YBaakLcWGe9',
+    currency: 'i6m2Lqwpfgu8bXahbVUXiBD6LvHecWx5jQ',
+    category: 'iGKfKjQHV2hMLKB2Mv74AoiyTXLbzFxGQ7',
+    turnaround: 'iLGXYrGT7g179bd5SWweSQ3x4vobE3z9UC',
+    status: 'iBF5sDA9FaQAbF9uuUEFfBFvP63zEfYEKT',
   },
   review: {
-    buyer: 'iPbx6NP7ZVLySKJU5Rfbt3saxNLaxHHV85',
-    jobHash: 'iFgEMF3Fbj1EFU7bAPjmrvMKUU9QfZumNP',
-    message: 'iKokqh2YmULa4HkSWRRJaywNMvGzRv7JTt',
-    rating: 'iDznRwvMsTaMmQ6zkfQTJKWb5YCh8RHyp5',
-    signature: 'iJZHVjWN22cLXx3MPWjpq7VeSBndjFtZB5',
-    timestamp: 'iL13pKpKAQZ4hm2vECGQ5EmFBqRzEneJrq',
+    buyer: 'iLZZWJaAr22J4JAVyL4hveHM2MEu4Z1jBj',
+    jobHash: 'iFjA7uUrbSSt58HvQiHKHEvX1ZbdEtGVB8',
+    message: 'iBNhKz8Szk5BXLdKrAoY915rduCnek1N5R',
+    rating: 'i4wBxE7NWmCHgkVZipjuV3TdkTg54gUHLy',
+    signature: 'iR33Uxq9t8PsZVmXSCrqCgSuFDDRqPSBNN',
+    timestamp: 'iPsZqEAa6TJJuXbrKkNZaug7p7zkFGvUFG',
   },
   platform: {
-    datapolicy: 'i6y4XPg5m9YeeP1Rk2iqJGiZwtWWK8pBoC',
-    trustlevel: 'iDDiY2y6Juo9vUprbB69utX55pzcpkNKoW',
-    disputeresolution: 'iJjCHbDoE6r4PqWe2i7SXGuPCn4Fw48Krw',
+    datapolicy: 'i64CkpXE8aCL4gDBC3RLACjT38iUtZNwyN',
+    trustlevel: 'iMHLQKGL9kyc1CmgBKdhBxYWoJ72vxvWzT',
+    disputeresolution: 'i8hM7bqWUhB4Qi8WJH5FrXyQFW8aNSgSSH',
   },
   session: {
-    duration: 'iEfV7FSNNorTcoukVXpUadneaCB44GJXRt',
-    tokenLimit: 'iK7AVbtFj9hKxy7XaCyzc4iPo8jfpeENQG',
-    imageLimit: 'i733ccahSD96tjGLvypVFozZ5i15xPSzZu',
-    messageLimit: 'iLrDehY12RhJJ5XGi49QTfZsasY1L7RKWz',
-    maxFileSize: 'i6iGYRcbtaPHyagDsv77Sja66HNFcA73Fw',
-    allowedFileTypes: 'i4WmLAEe78myVEPKdWSfRBTEb5sRoWhwjR',
+    duration: 'iSTaivA7DQNYSKJ6ESvoGRXW3Y6o4H59vX',
+    tokenLimit: 'iRJkzT2za4SmGQaPuxsUZxK38zRExJ9vJ3',
+    imageLimit: 'i6Ufi7c36kr4FS89QE86VeqbSTuGS1FHZV',
+    messageLimit: 'iEw9gH5EB5KjaJC4PuHrmBbXdGAer9Vuev',
+    maxFileSize: 'iQhhpt7rt6X9YqJY3mHVjb5W6qY8NZtghL',
+    allowedFileTypes: 'iKqBq6vTzorytcMwtYCLCZMWK8xJuHcSGw',
   },
 } as const;
 
-export function getCanonicalVdxfDefinitionCount(): number {
-  return Object.values(VDXF_KEYS).reduce((n, group) => n + Object.keys(group).length, 0);
+// --- Reverse lookups ---
+
+const AGENT_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(VDXF_KEYS.agent).map(([k, v]) => [v, k])
+);
+const SERVICE_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(VDXF_KEYS.service).map(([k, v]) => [v, k])
+);
+const REVIEW_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(VDXF_KEYS.review).map(([k, v]) => [v, k])
+);
+const SESSION_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(VDXF_KEYS.session).map(([k, v]) => [v, k])
+);
+const PLATFORM_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(VDXF_KEYS.platform).map(([k, v]) => [v, k])
+);
+
+function getReverseLookup(type: string): Record<string, string> {
+  switch (type) {
+    case 'agent': return AGENT_I_ADDRESS_TO_FIELD;
+    case 'service': return SERVICE_I_ADDRESS_TO_FIELD;
+    case 'review': return REVIEW_I_ADDRESS_TO_FIELD;
+    case 'session': return SESSION_I_ADDRESS_TO_FIELD;
+    case 'platform': return PLATFORM_I_ADDRESS_TO_FIELD;
+    default: return {};
+  }
 }
+
+// --- DataDescriptor helpers ---
+
+/**
+ * Build a sub-DataDescriptor (text/plain, flags=96).
+ * Label is the field i-address, value is stored as objectdata.message.
+ */
+export function makeSubDD(label: string, value: string): object {
+  return {
+    [DATA_DESCRIPTOR_KEY]: {
+      version: 1,
+      flags: 96,
+      mimetype: 'text/plain',
+      objectdata: { message: value },
+      label,
+    },
+  };
+}
+
+/**
+ * Build an outer DataDescriptor that wraps an array of sub-DDs.
+ * flags=32 (raw), objectdata is the sub-DD array.
+ */
+function makeOuterDD(subDDs: object[], label?: string): object {
+  return {
+    [DATA_DESCRIPTOR_KEY]: {
+      version: 1,
+      flags: 32,
+      objectdata: subDDs,
+      ...(label ? { label } : {}),
+    },
+  };
+}
+
+/**
+ * Parse a sub-DD to extract label + value.
+ */
+function parseSubDD(entry: unknown): { label: string; value: unknown } | null {
+  if (typeof entry !== 'object' || entry === null) return null;
+  const dd = (entry as Record<string, unknown>)[DATA_DESCRIPTOR_KEY] as Record<string, unknown> | undefined;
+  if (!dd) return null;
+  const label = (dd.label as string) || '';
+  if (dd.objectdata === null) return null; // deleted entry
+  if (typeof dd.objectdata === 'object' && dd.objectdata !== null && 'message' in (dd.objectdata as object)) {
+    return { label, value: (dd.objectdata as { message: unknown }).message };
+  }
+  if (typeof dd.objectdata === 'string') {
+    try { return { label, value: JSON.parse(Buffer.from(dd.objectdata, 'hex').toString('utf-8')) }; }
+    catch { return { label, value: dd.objectdata }; }
+  }
+  return { label, value: dd.objectdata };
+}
+
+/**
+ * Parse an outer DD (nested pattern — objectdata is an array of sub-DDs).
+ * Returns a map of resolved field names → values.
+ */
+function parseOuterDD(entry: unknown, type: string): Record<string, unknown> | null {
+  if (typeof entry !== 'object' || entry === null) return null;
+  const dd = (entry as Record<string, unknown>)[DATA_DESCRIPTOR_KEY] as Record<string, unknown> | undefined;
+  if (!dd) return null;
+  if (!Array.isArray(dd.objectdata)) return null;
+
+  const record: Record<string, unknown> = {};
+  const reverseLookup = getReverseLookup(type);
+
+  for (const subEntry of dd.objectdata) {
+    const sub = parseSubDD(subEntry);
+    if (!sub || !sub.label) continue;
+    // Resolve label: try as i-address first, then as plain field name
+    const fieldName = reverseLookup[sub.label] || sub.label;
+    record[fieldName] = sub.value;
+  }
+  return record;
+}
+
+// --- Legacy helpers (kept for backwards compat during transition) ---
 
 export function encodeVdxfValue(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('hex');
@@ -65,90 +179,192 @@ export function decodeVdxfValue(hex: string): unknown {
   }
 }
 
-export function buildAgentContentMultimap(profile?: AgentProfileInput, services: ServiceInput[] = []): Record<string, string[]> {
-  const contentmultimap: Record<string, string[]> = {};
+export function getCanonicalVdxfDefinitionCount(): number {
+  return Object.values(VDXF_KEYS).reduce((n, group) => n + Object.keys(group).length, 0);
+}
+
+// --- Build nested DD contentmultimap ---
+
+/**
+ * Build a nested DataDescriptor contentmultimap for an agent profile + services.
+ * Produces the on-chain format: { parentKeyIAddress: [outerDD] }
+ *
+ * Agent, session, and platform data → single outer DD under their parent key.
+ * Services → one outer DD per service under the service parent key.
+ */
+export function buildAgentContentMultimap(
+  profile?: AgentProfileInput,
+  services: ServiceInput[] = [],
+): Record<string, unknown[]> {
+  const contentmultimap: Record<string, unknown[]> = {};
 
   if (profile) {
-    contentmultimap[VDXF_KEYS.agent.version] = [encodeVdxfValue('1')];
-    contentmultimap[VDXF_KEYS.agent.type] = [encodeVdxfValue(profile.type)];
-    contentmultimap[VDXF_KEYS.agent.name] = [encodeVdxfValue(profile.name)];
-    contentmultimap[VDXF_KEYS.agent.description] = [encodeVdxfValue(profile.description)];
-    contentmultimap[VDXF_KEYS.agent.status] = [encodeVdxfValue('active')];
+    // --- Agent data ---
+    const agentSubDDs: object[] = [];
+    const K = VDXF_KEYS.agent;
 
-    if (profile.category) {
-      contentmultimap[VDXF_KEYS.agent.category] = [encodeVdxfValue(profile.category)];
-    }
-    if (profile.owner) {
-      contentmultimap[VDXF_KEYS.agent.owner] = [encodeVdxfValue(profile.owner)];
-    }
-    if (profile.tags?.length) {
-      contentmultimap[VDXF_KEYS.agent.tags] = [encodeVdxfValue(profile.tags)];
-    }
-    if (profile.website) {
-      contentmultimap[VDXF_KEYS.agent.website] = [encodeVdxfValue(profile.website)];
-    }
-    if (profile.avatar) {
-      contentmultimap[VDXF_KEYS.agent.avatar] = [encodeVdxfValue(profile.avatar)];
-    }
-    if (profile.protocols?.length) {
-      contentmultimap[VDXF_KEYS.agent.protocols] = [encodeVdxfValue(profile.protocols)];
-    }
-    if (profile.endpoints?.length) {
-      contentmultimap[VDXF_KEYS.agent.endpoints] = profile.endpoints.map(ep => encodeVdxfValue(ep));
-    }
-    if (profile.capabilities?.length) {
-      contentmultimap[VDXF_KEYS.agent.capabilities] = profile.capabilities.map(cap => encodeVdxfValue(cap));
-    }
+    agentSubDDs.push(makeSubDD(K.version, '1'));
+    agentSubDDs.push(makeSubDD(K.name, profile.name));
+    agentSubDDs.push(makeSubDD(K.type, profile.type));
+    agentSubDDs.push(makeSubDD(K.description, profile.description));
+    agentSubDDs.push(makeSubDD(K.status, 'active'));
 
+    if (profile.category) agentSubDDs.push(makeSubDD(K.category, profile.category));
+    if (profile.owner) agentSubDDs.push(makeSubDD(K.owner, profile.owner));
+    if (profile.tags?.length) agentSubDDs.push(makeSubDD(K.tags, JSON.stringify(profile.tags)));
+    if (profile.website) agentSubDDs.push(makeSubDD(K.website, profile.website));
+    if (profile.avatar) agentSubDDs.push(makeSubDD(K.avatar, profile.avatar));
+    if (profile.protocols?.length) agentSubDDs.push(makeSubDD(K.protocols, JSON.stringify(profile.protocols)));
+    if (profile.endpoints?.length) agentSubDDs.push(makeSubDD(K.endpoints, JSON.stringify(profile.endpoints)));
+    if (profile.capabilities?.length) agentSubDDs.push(makeSubDD(K.capabilities, JSON.stringify(profile.capabilities)));
+
+    contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
+
+    // --- Session data ---
     if (profile.session) {
-      if (profile.session.duration != null) {
-        contentmultimap[VDXF_KEYS.session.duration] = [encodeVdxfValue(profile.session.duration)];
-      }
-      if (profile.session.tokenLimit != null) {
-        contentmultimap[VDXF_KEYS.session.tokenLimit] = [encodeVdxfValue(profile.session.tokenLimit)];
-      }
-      if (profile.session.imageLimit != null) {
-        contentmultimap[VDXF_KEYS.session.imageLimit] = [encodeVdxfValue(profile.session.imageLimit)];
-      }
-      if (profile.session.messageLimit != null) {
-        contentmultimap[VDXF_KEYS.session.messageLimit] = [encodeVdxfValue(profile.session.messageLimit)];
-      }
-      if (profile.session.maxFileSize != null) {
-        contentmultimap[VDXF_KEYS.session.maxFileSize] = [encodeVdxfValue(profile.session.maxFileSize)];
-      }
-      if (profile.session.allowedFileTypes?.length) {
-        contentmultimap[VDXF_KEYS.session.allowedFileTypes] = [encodeVdxfValue(profile.session.allowedFileTypes)];
+      const sessionSubDDs: object[] = [];
+      const SK = VDXF_KEYS.session;
+
+      if (profile.session.duration != null) sessionSubDDs.push(makeSubDD(SK.duration, String(profile.session.duration)));
+      if (profile.session.tokenLimit != null) sessionSubDDs.push(makeSubDD(SK.tokenLimit, String(profile.session.tokenLimit)));
+      if (profile.session.imageLimit != null) sessionSubDDs.push(makeSubDD(SK.imageLimit, String(profile.session.imageLimit)));
+      if (profile.session.messageLimit != null) sessionSubDDs.push(makeSubDD(SK.messageLimit, String(profile.session.messageLimit)));
+      if (profile.session.maxFileSize != null) sessionSubDDs.push(makeSubDD(SK.maxFileSize, String(profile.session.maxFileSize)));
+      if (profile.session.allowedFileTypes?.length) sessionSubDDs.push(makeSubDD(SK.allowedFileTypes, JSON.stringify(profile.session.allowedFileTypes)));
+
+      if (sessionSubDDs.length > 0) {
+        contentmultimap[PARENT_KEYS.session] = [makeOuterDD(sessionSubDDs, PARENT_KEYS.session)];
       }
     }
 
-    // Platform-level keys
-    if (profile.datapolicy) {
-      contentmultimap[VDXF_KEYS.platform.datapolicy] = [encodeVdxfValue(profile.datapolicy)];
-    }
-    if (profile.trustlevel) {
-      contentmultimap[VDXF_KEYS.platform.trustlevel] = [encodeVdxfValue(profile.trustlevel)];
-    }
-    if (profile.disputeresolution) {
-      contentmultimap[VDXF_KEYS.platform.disputeresolution] = [encodeVdxfValue(profile.disputeresolution)];
+    // --- Platform data ---
+    const platformSubDDs: object[] = [];
+    const PK = VDXF_KEYS.platform;
+
+    if (profile.datapolicy) platformSubDDs.push(makeSubDD(PK.datapolicy, profile.datapolicy));
+    if (profile.trustlevel) platformSubDDs.push(makeSubDD(PK.trustlevel, profile.trustlevel));
+    if (profile.disputeresolution) platformSubDDs.push(makeSubDD(PK.disputeresolution, profile.disputeresolution));
+
+    if (platformSubDDs.length > 0) {
+      contentmultimap[PARENT_KEYS.platform] = [makeOuterDD(platformSubDDs, PARENT_KEYS.platform)];
     }
   }
 
+  // --- Services (one outer DD per service) ---
   if (services.length > 0) {
-    contentmultimap[VDXF_KEYS.agent.services] = services.map((svc) =>
-      encodeVdxfValue({
-        name: svc.name,
-        description: svc.description,
-        category: svc.category,
-        price: svc.price,
-        currency: svc.currency,
-        turnaround: svc.turnaround,
-        status: 'active',
-      })
-    );
+    const SK = VDXF_KEYS.service;
+    contentmultimap[PARENT_KEYS.service] = services.map((svc) => {
+      const subDDs: object[] = [];
+      subDDs.push(makeSubDD(SK.name, svc.name));
+      if (svc.description) subDDs.push(makeSubDD(SK.description, svc.description));
+      if (svc.category) subDDs.push(makeSubDD(SK.category, svc.category));
+      if (svc.price != null) subDDs.push(makeSubDD(SK.price, String(svc.price)));
+      if (svc.currency) subDDs.push(makeSubDD(SK.currency, svc.currency));
+      if (svc.turnaround) subDDs.push(makeSubDD(SK.turnaround, svc.turnaround));
+      subDDs.push(makeSubDD(SK.status, 'active'));
+      return makeOuterDD(subDDs, PARENT_KEYS.service);
+    });
   }
 
   return contentmultimap;
 }
+
+// --- Decode nested DD contentmultimap ---
+
+/**
+ * Decode a nested DataDescriptor contentmultimap back into an AgentProfileInput + services.
+ * Handles both nested DD format (primary) and legacy flat hex format (fallback).
+ */
+export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
+  profile: AgentProfileInput;
+  services: ServiceInput[];
+} {
+  const profile: Partial<AgentProfileInput> = {};
+  const session: Partial<NonNullable<AgentProfileInput['session']>> = {};
+  const services: ServiceInput[] = [];
+
+  // --- Try nested DD format first ---
+  const agentEntries = cmm[PARENT_KEYS.agent];
+  if (agentEntries?.length) {
+    // Take the LAST outer DD (updateidentity appends, latest wins)
+    const agentData = parseOuterDD(agentEntries[agentEntries.length - 1], 'agent');
+    if (agentData) {
+      if (agentData.name) profile.name = agentData.name as string;
+      if (agentData.type) profile.type = agentData.type as AgentProfileInput['type'];
+      if (agentData.description) profile.description = agentData.description as string;
+      if (agentData.category) profile.category = agentData.category as string;
+      if (agentData.owner) profile.owner = agentData.owner as string;
+      if (agentData.website) profile.website = agentData.website as string;
+      if (agentData.avatar) profile.avatar = agentData.avatar as string;
+      if (agentData.tags) {
+        profile.tags = typeof agentData.tags === 'string' ? JSON.parse(agentData.tags) : agentData.tags as string[];
+      }
+      if (agentData.protocols) {
+        profile.protocols = typeof agentData.protocols === 'string' ? JSON.parse(agentData.protocols) : agentData.protocols as string[];
+      }
+      if (agentData.endpoints) {
+        profile.endpoints = typeof agentData.endpoints === 'string' ? JSON.parse(agentData.endpoints) : agentData.endpoints as AgentProfileInput['endpoints'];
+      }
+      if (agentData.capabilities) {
+        profile.capabilities = typeof agentData.capabilities === 'string' ? JSON.parse(agentData.capabilities) : agentData.capabilities as AgentProfileInput['capabilities'];
+      }
+    }
+  }
+
+  const sessionEntries = cmm[PARENT_KEYS.session];
+  if (sessionEntries?.length) {
+    const sessionData = parseOuterDD(sessionEntries[sessionEntries.length - 1], 'session');
+    if (sessionData) {
+      if (sessionData.duration != null) session.duration = Number(sessionData.duration);
+      if (sessionData.tokenLimit != null) session.tokenLimit = Number(sessionData.tokenLimit);
+      if (sessionData.imageLimit != null) session.imageLimit = Number(sessionData.imageLimit);
+      if (sessionData.messageLimit != null) session.messageLimit = Number(sessionData.messageLimit);
+      if (sessionData.maxFileSize != null) session.maxFileSize = Number(sessionData.maxFileSize);
+      if (sessionData.allowedFileTypes) {
+        session.allowedFileTypes = typeof sessionData.allowedFileTypes === 'string'
+          ? JSON.parse(sessionData.allowedFileTypes) : sessionData.allowedFileTypes as string[];
+      }
+    }
+  }
+
+  const platformEntries = cmm[PARENT_KEYS.platform];
+  if (platformEntries?.length) {
+    const platformData = parseOuterDD(platformEntries[platformEntries.length - 1], 'platform');
+    if (platformData) {
+      if (platformData.datapolicy) profile.datapolicy = platformData.datapolicy as string;
+      if (platformData.trustlevel) profile.trustlevel = platformData.trustlevel as string;
+      if (platformData.disputeresolution) profile.disputeresolution = platformData.disputeresolution as string;
+    }
+  }
+
+  const serviceEntries = cmm[PARENT_KEYS.service];
+  if (serviceEntries?.length) {
+    for (const entry of serviceEntries) {
+      const svcData = parseOuterDD(entry, 'service');
+      if (svcData && svcData.name) {
+        services.push({
+          name: svcData.name as string,
+          description: svcData.description as string | undefined,
+          category: svcData.category as string | undefined,
+          price: svcData.price != null ? Number(svcData.price) : undefined,
+          currency: svcData.currency as string | undefined,
+          turnaround: svcData.turnaround as string | undefined,
+        });
+      }
+    }
+  }
+
+  if (Object.keys(session).length > 0) {
+    profile.session = session as AgentProfileInput['session'];
+  }
+
+  return {
+    profile: profile as AgentProfileInput,
+    services,
+  };
+}
+
+// --- Canonical update helpers ---
 
 export interface CanonicalAgentUpdateParams {
   fullName?: string;
@@ -162,7 +378,7 @@ export interface CanonicalAgentUpdateParams {
 export interface CanonicalIdentitySnapshot {
   name?: string;
   parent?: string;
-  contentmultimap?: Record<string, string[]>;
+  contentmultimap?: Record<string, unknown[]>;
 }
 
 export function buildCanonicalAgentUpdate(params: CanonicalAgentUpdateParams): Record<string, unknown> {
@@ -171,7 +387,6 @@ export function buildCanonicalAgentUpdate(params: CanonicalAgentUpdateParams): R
     parent,
     primaryaddresses,
     minimumsignatures = 1,
-    vdxfKeys,
     fields = {},
   } = params;
 
@@ -185,27 +400,25 @@ export function buildCanonicalAgentUpdate(params: CanonicalAgentUpdateParams): R
     throw new Error('primaryaddresses required');
   }
 
-  const contentmultimap: Record<string, string[]> = {};
+  // Build nested DD contentmultimap from fields
+  const agentSubDDs: object[] = [];
+  const K = VDXF_KEYS.agent;
 
   for (const [field, value] of Object.entries(fields)) {
     if (value == null) continue;
     if (typeof value === 'string' && value.trim() === '') continue;
     if (Array.isArray(value) && value.length === 0) continue;
 
-    const key = vdxfKeys[field];
-    if (!key) continue;
+    const iAddr = (K as Record<string, string>)[field];
+    if (!iAddr) continue;
 
-    if (field === 'services' && Array.isArray(value)) {
-      const encoded = value
-        .filter((svc) => svc && typeof svc === 'object' && Object.keys(svc as object).length > 0)
-        .map((svc) => encodeVdxfValue(svc));
+    const strValue = typeof value === 'string' ? value : JSON.stringify(value);
+    agentSubDDs.push(makeSubDD(iAddr, strValue));
+  }
 
-      if (encoded.length > 0) {
-        contentmultimap[key] = encoded;
-      }
-    } else {
-      contentmultimap[key] = [encodeVdxfValue(value)];
-    }
+  const contentmultimap: Record<string, unknown[]> = {};
+  if (agentSubDDs.length > 0) {
+    contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
   }
 
   return {
@@ -227,115 +440,23 @@ export function verifyPublishedIdentity(params: {
   if (identity.name !== expectedPayload.name) errors.push('name mismatch');
   if (identity.parent !== expectedPayload.parent) errors.push('parent mismatch');
 
-  const expectedCmm = (expectedPayload.contentmultimap || {}) as Record<string, string[]>;
+  const expectedCmm = (expectedPayload.contentmultimap || {}) as Record<string, unknown[]>;
   const onchain = identity.contentmultimap || {};
 
-  for (const [key, value] of Object.entries(expectedCmm)) {
-    if (!onchain[key] || onchain[key].length === 0) {
+  // For nested DD format, verify parent keys are present and have entries
+  for (const key of Object.keys(expectedCmm)) {
+    if (!onchain[key] || (onchain[key] as unknown[]).length === 0) {
       errors.push(`missing key ${key}`);
-      continue;
-    }
-
-    if (!Array.isArray(value) || value.length === 0) continue;
-
-    if (onchain[key].length !== value.length) {
-      errors.push(`array length mismatch on ${key}: expected ${value.length}, got ${onchain[key].length}`);
-      continue;
-    }
-
-    for (let i = 0; i < value.length; i++) {
-      if (onchain[key][i] !== value[i]) {
-        const e = decodeVdxfValue(value[i]);
-        const a = decodeVdxfValue(onchain[key][i]);
-        if (JSON.stringify(e) !== JSON.stringify(a)) {
-          errors.push(`value mismatch on ${key}[${i}]`);
-        }
-      }
     }
   }
 
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Reverse-decode a VDXF contentmultimap back into an AgentProfileInput (M3).
- * Used by A2A Gateway to generate Agent Cards from on-chain identity data.
- *
- * @param cmm - On-chain contentmultimap (i-address keys → hex-encoded values)
- * @returns Decoded agent profile + services
- */
-export function decodeContentMultimap(cmm: Record<string, string[]>): {
-  profile: AgentProfileInput;
-  services: ServiceInput[];
-} {
-  // Build reverse lookup: i-address → [group, field]
-  const reverseMap = new Map<string, [string, string]>();
-  for (const [group, keys] of Object.entries(VDXF_KEYS)) {
-    for (const [field, iAddr] of Object.entries(keys)) {
-      reverseMap.set(iAddr, [group, field]);
-    }
-  }
-
-  const profile: Partial<AgentProfileInput> = {};
-  const session: Partial<NonNullable<AgentProfileInput['session']>> = {};
-  const services: ServiceInput[] = [];
-
-  for (const [key, values] of Object.entries(cmm)) {
-    const mapping = reverseMap.get(key);
-    if (!mapping || !values?.length) continue;
-
-    const [group, field] = mapping;
-
-    if (group === 'agent') {
-      switch (field) {
-        case 'name': profile.name = decodeVdxfValue(values[0]) as string; break;
-        case 'type': profile.type = decodeVdxfValue(values[0]) as AgentProfileInput['type']; break;
-        case 'description': profile.description = decodeVdxfValue(values[0]) as string; break;
-        case 'category': profile.category = decodeVdxfValue(values[0]) as string; break;
-        case 'owner': profile.owner = decodeVdxfValue(values[0]) as string; break;
-        case 'tags': profile.tags = decodeVdxfValue(values[0]) as string[]; break;
-        case 'website': profile.website = decodeVdxfValue(values[0]) as string; break;
-        case 'avatar': profile.avatar = decodeVdxfValue(values[0]) as string; break;
-        case 'protocols': profile.protocols = decodeVdxfValue(values[0]) as string[]; break;
-        case 'endpoints': profile.endpoints = values.map(v => decodeVdxfValue(v) as AgentProfileInput['endpoints'] extends (infer T)[] | undefined ? T : never); break;
-        case 'capabilities': profile.capabilities = values.map(v => decodeVdxfValue(v) as AgentProfileInput['capabilities'] extends (infer T)[] | undefined ? T : never); break;
-        case 'services':
-          for (const v of values) {
-            services.push(decodeVdxfValue(v) as ServiceInput);
-          }
-          break;
-      }
-    } else if (group === 'session') {
-      const decoded = decodeVdxfValue(values[0]);
-      switch (field) {
-        case 'duration': session.duration = decoded as number; break;
-        case 'tokenLimit': session.tokenLimit = decoded as number; break;
-        case 'imageLimit': session.imageLimit = decoded as number; break;
-        case 'messageLimit': session.messageLimit = decoded as number; break;
-        case 'maxFileSize': session.maxFileSize = decoded as number; break;
-        case 'allowedFileTypes': session.allowedFileTypes = decoded as string[]; break;
-      }
-    } else if (group === 'platform') {
-      const decoded = decodeVdxfValue(values[0]) as string;
-      switch (field) {
-        case 'datapolicy': profile.datapolicy = decoded; break;
-        case 'trustlevel': profile.trustlevel = decoded; break;
-        case 'disputeresolution': profile.disputeresolution = decoded; break;
-      }
-    }
-  }
-
-  if (Object.keys(session).length > 0) {
-    profile.session = session as AgentProfileInput['session'];
-  }
-
-  return {
-    profile: profile as AgentProfileInput,
-    services,
-  };
-}
-
-export function buildUpdateIdentityPayload(identityName: string, contentmultimap: Record<string, string[]>): Record<string, unknown> {
+export function buildUpdateIdentityPayload(
+  identityName: string,
+  contentmultimap: Record<string, unknown[]>,
+): Record<string, unknown> {
   const clean = identityName.replace(/@$/, '');
   const parts = clean.split('.');
   const name = parts[0] || clean;
@@ -350,7 +471,6 @@ export function buildUpdateIdentityPayload(identityName: string, contentmultimap
 
 export function buildUpdateIdentityCommand(payload: Record<string, unknown>, chain: 'verustest' | 'verus' = 'verustest'): string[] {
   const args = ['verus'];
-  // Only pass -chain for testnet; mainnet is the default and doesn't need a chain argument
   if (chain === 'verustest') args.push('-chain=vrsctest');
   args.push('updateidentity', JSON.stringify(payload));
   return args;

@@ -31,7 +31,7 @@ import { generateCanary, checkForCanaryLeak, type CanaryConfig } from './safety/
 import { randomUUID } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
 import { buildIdentityUpdateTx } from './identity/update.js';
-import { VDXF_KEYS, encodeVdxfValue } from './onboarding/vdxf.js';
+import { VDXF_KEYS, PARENT_KEYS, DATA_DESCRIPTOR_KEY, makeSubDD } from './onboarding/vdxf.js';
 
 /** Default request timeout for raw fetch calls (ms) */
 const FETCH_TIMEOUT = 30_000;
@@ -837,38 +837,38 @@ export class J41Agent extends EventEmitter {
         return;
       }
 
-      // 3. Build VDXF additions from the inbox item's review data
+      // 3. Build nested DD VDXF additions from the inbox item's review data
       const reviewKeys = VDXF_KEYS.review;
-      const vdxfAdditions: Record<string, string[]> = {};
+      const vdxfAdditions: Record<string, unknown[]> = {};
 
-      // Check if vdxfData keys are actual i-addresses (pre-mapped VDXF keys)
-      const hasIAddressKeys = inboxItem.vdxfData &&
-        Object.keys(inboxItem.vdxfData).every((k: string) => /^i[A-HJ-NP-Za-km-z1-9]{24,}$/.test(k));
-      if (hasIAddressKeys) {
-        // Use the pre-computed VDXF data from the inbox item
+      // Check if vdxfData is already in nested DD format (has parent key)
+      const hasNestedDD = inboxItem.vdxfData &&
+        Object.keys(inboxItem.vdxfData).some((k: string) => k === PARENT_KEYS.review);
+      if (hasNestedDD) {
+        // Use pre-computed nested DD data from the inbox item
         for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
           if (value != null) {
-            vdxfAdditions[key] = [String(value)];
+            vdxfAdditions[key] = Array.isArray(value) ? value : [value];
           }
         }
       } else {
-        // Build VDXF data from inbox item fields
-        if (inboxItem.senderVerusId) {
-          vdxfAdditions[reviewKeys.buyer] = [encodeVdxfValue(inboxItem.senderVerusId)];
-        }
-        if (inboxItem.jobHash) {
-          vdxfAdditions[reviewKeys.jobHash] = [encodeVdxfValue(inboxItem.jobHash)];
-        }
-        if (inboxItem.message) {
-          vdxfAdditions[reviewKeys.message] = [encodeVdxfValue(inboxItem.message)];
-        }
-        if (inboxItem.rating != null) {
-          vdxfAdditions[reviewKeys.rating] = [encodeVdxfValue(inboxItem.rating)];
-        }
-        if (inboxItem.signature) {
-          vdxfAdditions[reviewKeys.signature] = [encodeVdxfValue(inboxItem.signature)];
-        }
-        vdxfAdditions[reviewKeys.timestamp] = [encodeVdxfValue(Math.floor(Date.now() / 1000))];
+        // Build nested DD from inbox item fields
+        const subDDs: object[] = [];
+        if (inboxItem.senderVerusId) subDDs.push(makeSubDD(reviewKeys.buyer, inboxItem.senderVerusId));
+        if (inboxItem.jobHash) subDDs.push(makeSubDD(reviewKeys.jobHash, inboxItem.jobHash));
+        if (inboxItem.signature) subDDs.push(makeSubDD(reviewKeys.signature, inboxItem.signature));
+        subDDs.push(makeSubDD(reviewKeys.timestamp, String(Math.floor(Date.now() / 1000))));
+        if (inboxItem.message) subDDs.push(makeSubDD(reviewKeys.message, inboxItem.message));
+        if (inboxItem.rating != null) subDDs.push(makeSubDD(reviewKeys.rating, String(inboxItem.rating)));
+
+        vdxfAdditions[PARENT_KEYS.review] = [{
+          [DATA_DESCRIPTOR_KEY]: {
+            version: 1,
+            flags: 32,
+            objectdata: subDDs,
+            label: PARENT_KEYS.review,
+          },
+        }];
       }
 
       // 4. Build and sign the identity update transaction

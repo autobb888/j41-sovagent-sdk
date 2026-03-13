@@ -21,8 +21,8 @@ export interface IdentityUpdateParams {
   identityData: RawIdentityData;
   /** Agent's UTXOs for funding the transaction fee */
   utxos: Utxo[];
-  /** VDXF key-value pairs to ADD to contentmultimap (hex-encoded values) */
-  vdxfAdditions: Record<string, string[]>;
+  /** VDXF key-value pairs to ADD to contentmultimap (nested DD objects or hex strings) */
+  vdxfAdditions: Record<string, unknown[]>;
   /** Network (default: verustest) */
   network?: 'verus' | 'verustest';
   /** Fee in satoshis (default: 10000 = 0.0001 VRSC) */
@@ -89,12 +89,12 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
   }
 
   // 1. Merge VDXF additions into current identity's contentmultimap
-  const currentCmm: Record<string, string[]> = {};
+  const currentCmm: Record<string, unknown[]> = {};
 
   // Copy existing contentmultimap
   if (identityData.identity.contentmultimap) {
     for (const [key, values] of Object.entries(identityData.identity.contentmultimap)) {
-      currentCmm[key] = Array.isArray(values) ? [...values] : [values as string];
+      currentCmm[key] = Array.isArray(values) ? [...values] : [values];
     }
   }
 

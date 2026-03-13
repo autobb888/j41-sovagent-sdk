@@ -92,6 +92,9 @@ export {
 
 export {
   VDXF_KEYS,
+  PARENT_KEYS,
+  DATA_DESCRIPTOR_KEY,
+  makeSubDD,
   getCanonicalVdxfDefinitionCount,
   encodeVdxfValue,
   decodeVdxfValue,

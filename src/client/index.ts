@@ -1646,7 +1646,7 @@ export interface RawIdentityData {
     identityaddress: string;
     parent: string;
     contentmap?: Record<string, string>;
-    contentmultimap?: Record<string, string[]>;
+    contentmultimap?: Record<string, unknown[]>;
     primaryaddresses: string[];
     minimumsignatures: number;
     revocationauthority: string;
