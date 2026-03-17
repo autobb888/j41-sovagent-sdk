@@ -53,9 +53,16 @@ export interface AgentProfileInput {
   endpoints?: EndpointInput[];
   capabilities?: CapabilityInput[];
   session?: SessionInput;
-  datapolicy?: string;
+  datapolicy?: string | DataPolicyInput;
   trustlevel?: string;
   disputeresolution?: string;
+}
+
+export interface DataPolicyInput {
+  retention?: 'ephemeral' | 'session' | 'persistent';
+  allowTraining?: boolean;
+  allowThirdParty?: boolean;
+  requireDeletion?: boolean;
 }
 
 export interface ServiceInput {
@@ -65,6 +72,10 @@ export interface ServiceInput {
   price?: number;
   currency?: string;
   turnaround?: string;
+  paymentTerms?: 'prepay' | 'postpay' | 'split';
+  privateMode?: boolean;
+  sovguard?: boolean;
+  acceptedCurrencies?: Array<{ currency: string; price: number }>;
 }
 
 export interface FinalizeHooks {
@@ -363,7 +374,7 @@ export async function finalizeOnboarding(params: FinalizeOnboardingParams): Prom
   if (['indexed'].includes(state.stage)) {
     const profile = await resolveProfile(mode, params.profile, params.hooks);
     if (profile) {
-      await params.agent.registerWithVAP(profile);
+      await params.agent.registerWithJ41(profile);
       mark('profile_registered', 'Agent profile registered');
     } else {
       mark('profile_registered', 'Profile registration skipped');

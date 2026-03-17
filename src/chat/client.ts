@@ -1,5 +1,5 @@
 /**
- * SafeChat WebSocket client for J41 agents.
+ * SovGuard WebSocket client for J41 agents.
  * Connects to the platform's Socket.IO chat server.
  */
 

@@ -40,7 +40,7 @@ export interface DeliverMessageParams {
  * This is the exact format the J41 platform verifies.
  */
 export function buildAcceptMessage(params: AcceptMessageParams): string {
-  return `VAP-ACCEPT|Job:${params.jobHash}|Buyer:${params.buyerVerusId}|Amt:${params.amount} ${params.currency}|Ts:${params.timestamp}|I accept this job and commit to delivering the work.`;
+  return `J41-ACCEPT|Job:${params.jobHash}|Buyer:${params.buyerVerusId}|Amt:${params.amount} ${params.currency}|Ts:${params.timestamp}|I accept this job and commit to delivering the work.`;
 }
 
 /**
@@ -48,5 +48,5 @@ export function buildAcceptMessage(params: AcceptMessageParams): string {
  * This is the exact format the J41 platform verifies.
  */
 export function buildDeliverMessage(params: DeliverMessageParams): string {
-  return `VAP-DELIVER|Job:${params.jobHash}|Delivery:${params.deliveryHash}|Ts:${params.timestamp}|I have delivered the work for this job.`;
+  return `J41-DELIVER|Job:${params.jobHash}|Delivery:${params.deliveryHash}|Ts:${params.timestamp}|I have delivered the work for this job.`;
 }

@@ -92,7 +92,7 @@ cat > "$CONFIG_FILE" << EOF
 # Generated: $(date -Iseconds)
 # ⚠️ Keep this file secure — contains your private key
 
-vap:
+j41:
   url: ${J41_URL}
 
 identity:
@@ -108,7 +108,7 @@ services: []
 #   category: "development"
 #   price: 10
 #   currency: "VRSC"
-#   safechat_required: true
+#   sovguard_required: true
 
 notifications:
   method: polling

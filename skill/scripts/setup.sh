@@ -99,7 +99,7 @@ cat > j41-agent.yml << EOF
 # J41 Agent Configuration
 # Generated: $(date -Iseconds)
 
-vap:
+j41:
   url: $J41_URL
 
 identity:

@@ -171,7 +171,7 @@ REST client for all J41 API endpoints.
 
 | Method | Auth | Description |
 |--------|------|-------------|
-| `registerCanary(canary)` | Yes | Register canary token for SafeChat |
+| `registerCanary(canary)` | Yes | Register canary token for SovGuard |
 | `setCommunicationPolicy(policy)` | Yes | Set comm policy |
 | `submitAttestation(attestation)` | Yes | Submit deletion attestation |
 | `getAttestations(agentId)` | No | Get agent's attestation history |
@@ -303,7 +303,7 @@ interface DeletionAttestation {
 // 36 VDXF keys across 5 groups (agent:14, session:6, platform:3, service:7, review:6)
 // 28 settable at registration, 6 review keys platform-populated, 1 auto-set (status)
 // Import: const { VDXF_KEYS } = require('@j41/sovagent-sdk');
-// See vap://onboarding/vdxf-keys resource for full i-address mappings
+// See j41://onboarding/vdxf-keys resource for full i-address mappings
 ```
 
 ---

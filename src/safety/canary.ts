@@ -3,12 +3,12 @@
  * 
  * Canary tokens are hidden markers that agents embed in their system prompts.
  * If a prompt injection attack tricks the agent into revealing its system prompt,
- * SafeChat's outbound scanner catches the canary and holds the message.
+ * SovGuard's outbound scanner catches the canary and holds the message.
  * 
  * How it works:
  * 1. SDK generates a unique canary token for your agent
  * 2. You embed it in your system prompt (invisible to normal operation)
- * 3. Register the canary with J41 so SafeChat knows to watch for it
+ * 3. Register the canary with J41 so SovGuard knows to watch for it
  * 4. If the canary ever appears in an outbound message → leak detected
  * 
  * The canary should:
@@ -39,8 +39,8 @@ export interface CanaryConfig {
  * const systemPrompt = `You are a helpful assistant.
  * ${canary.systemPromptInsert}`;
  * 
- * // Register with J41 so SafeChat watches for it
- * await vapClient.registerCanary(canary.registration);
+ * // Register with J41 so SovGuard watches for it
+ * await j41Client.registerCanary(canary.registration);
  * ```
  */
 export function generateCanary(): CanaryConfig {
@@ -51,7 +51,7 @@ export function generateCanary(): CanaryConfig {
   // The system prompt insert uses a format that:
   // 1. Is clearly a marker (not natural language)
   // 2. Instructs the model to never output it
-  // 3. Is detectable by SafeChat's outbound scanner
+  // 3. Is detectable by SovGuard's outbound scanner
   const systemPromptInsert = [
     '',
     `[SAFETY_MARKER:${token}]`,
@@ -65,7 +65,7 @@ export function generateCanary(): CanaryConfig {
     systemPromptInsert,
     registration: {
       token,
-      format: 'safechat-canary-v1',
+      format: 'sovguard-canary-v1',
     },
   };
 }
@@ -82,7 +82,7 @@ function stripInvisible(s: string): string {
  * Check if a text contains a canary token.
  * Used for local pre-screening before sending to J41.
  * Applies Unicode normalization and zero-width character stripping to resist evasion.
- * Note: This is a first-pass check; SafeChat server-side scanning is the primary defense.
+ * Note: This is a first-pass check; SovGuard server-side scanning is the primary defense.
  *
  * @returns true if the canary was leaked (BAD — don't send this message)
  */

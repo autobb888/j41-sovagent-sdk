@@ -77,7 +77,7 @@ describe('J41Agent', () => {
     // Mock the client methods for the registration flow
     agent.client.onboard = async (name: string, address: string, pubkey: string) => ({
       status: 'challenge',
-      challenge: 'vap-onboard:test-challenge-123',
+      challenge: 'j41-onboard:test-challenge-123',
       token: 'tok_abc',
     });
 

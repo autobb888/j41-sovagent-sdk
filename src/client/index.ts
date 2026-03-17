@@ -265,9 +265,10 @@ export class J41Client {
     return res.data;
   }
 
-  /** Get UTXOs for authenticated identity */
-  async getUtxos(): Promise<UtxoResponse> {
-    const res = await this.request<{ data: UtxoResponse }>('GET', '/v1/tx/utxos');
+  /** Get UTXOs for authenticated identity. Optionally pass an address (R-address or i-address) to query. */
+  async getUtxos(address?: string): Promise<UtxoResponse> {
+    const path = address ? `/v1/tx/utxos?address=${encodeURIComponent(address)}` : '/v1/tx/utxos';
+    const res = await this.request<{ data: UtxoResponse }>('GET', path);
     return res.data;
   }
 
@@ -446,13 +447,13 @@ export class J41Client {
   // Safety endpoints
   // ------------------------------------------
 
-  /** Register a canary token so SafeChat watches for leaks */
+  /** Register a canary token so SovGuard watches for leaks */
   async registerCanary(canary: { token: string; format: string }): Promise<{ status: string }> {
     const res = await this.request<{ data: { status: string } }>('POST', '/v1/me/canary', canary);
     return res.data;
   }
 
-  /** Set communication policy (safechat_only | safechat_preferred | external) */
+  /** Set communication policy (sovguard_only | sovguard_preferred | external) */
   async setCommunicationPolicy(policy: string, externalChannels?: { type: string; handle?: string }[]): Promise<{ status: string }> {
     const res = await this.request<{ data: { status: string } }>('POST', '/v1/me/communication-policy', { policy, externalChannels });
     return res.data;
@@ -660,7 +661,7 @@ export class J41Client {
     currency?: string;
     deadline?: string;
     timestamp?: number;
-    safechatEnabled?: boolean;
+    sovguardEnabled?: boolean;
   }): Promise<JobRequestMessage> {
     const query = new URLSearchParams();
     query.set('sellerVerusId', params.sellerVerusId);
@@ -669,7 +670,7 @@ export class J41Client {
     if (params.currency) query.set('currency', params.currency);
     if (params.deadline) query.set('deadline', params.deadline);
     if (params.timestamp != null) query.set('timestamp', String(params.timestamp));
-    if (params.safechatEnabled === false) query.set('safechatEnabled', 'false');
+    if (params.sovguardEnabled === false) query.set('sovguardEnabled', 'false');
     const res = await this.request<{ data: JobRequestMessage }>('GET', `/v1/jobs/message/request?${query}`);
     return res.data;
   }
@@ -876,9 +877,11 @@ export class J41Client {
     return this.request<{ data: AgentSummary[]; pagination: PaginationMeta }>('GET', `/v1/search?${query}`);
   }
 
-  /** Deactivate an agent (signed request) */
-  async deactivateAgent(agentId: string, verusId: string, signature: string, timestamp?: number): Promise<{ id: string; status: string; message: string }> {
-    const res = await this.request<{ data: { id: string; status: string; message: string } }>('POST', `/v1/agents/${encodeURIComponent(agentId)}/deactivate`, { verusId, signature, timestamp });
+  /** Toggle agent status (active/inactive). Requires signed payload. */
+  async setAgentStatus(verusId: string, status: 'active' | 'inactive', signature: string, timestamp: number, nonce?: string): Promise<{ id: string; status: string; message: string }> {
+    const body: Record<string, unknown> = { status, signature, timestamp };
+    if (nonce) body.nonce = nonce;
+    const res = await this.request<{ data: { id: string; status: string; message: string } }>('POST', `/v1/agents/${encodeURIComponent(verusId)}/status`, body);
     return res.data;
   }
 
@@ -1061,6 +1064,28 @@ export class J41Client {
   }
 
   // ------------------------------------------
+  // Webhook endpoints
+  // ------------------------------------------
+
+  /** Register a webhook endpoint for receiving platform events */
+  async registerWebhook(url: string, events: string[], secret: string): Promise<WebhookRegistration> {
+    const res = await this.request<{ data: WebhookRegistration }>('POST', '/v1/me/webhooks', { url, events, secret });
+    return res.data;
+  }
+
+  /** List registered webhooks */
+  async listWebhooks(): Promise<WebhookListItem[]> {
+    const res = await this.request<{ data: WebhookListItem[] }>('GET', '/v1/me/webhooks');
+    return res.data;
+  }
+
+  /** Delete a webhook by ID */
+  async deleteWebhook(webhookId: string): Promise<{ deleted: boolean }> {
+    const res = await this.request<{ data: { deleted: boolean } }>('DELETE', `/v1/me/webhooks/${encodeURIComponent(webhookId)}`);
+    return res.data;
+  }
+
+  // ------------------------------------------
   // Auth session endpoints
   // ------------------------------------------
 
@@ -1123,6 +1148,28 @@ export class J41Client {
   async health(): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('GET', '/v1/health');
   }
+
+  // ------------------------------------------
+  // Trust score endpoints
+  // ------------------------------------------
+
+  /** Get trust score for an agent (public) */
+  async getTrustScore(verusId: string): Promise<TrustScore> {
+    const res = await this.request<{ data: TrustScore }>('GET', `/v1/agents/${encodeURIComponent(verusId)}/trust`);
+    return res.data;
+  }
+
+  /** Get my trust score detail (authenticated) */
+  async getMyTrust(): Promise<TrustDetail> {
+    const res = await this.request<{ data: TrustDetail }>('GET', '/v1/me/trust');
+    return res.data;
+  }
+
+  /** Get my trust score history (authenticated) */
+  async getMyTrustHistory(): Promise<TrustHistory> {
+    const res = await this.request<{ data: TrustHistory }>('GET', '/v1/me/trust/history');
+    return res.data;
+  }
 }
 
 // ------------------------------------------
@@ -1160,6 +1207,7 @@ export interface ChainInfo {
 export interface Utxo {
   txid: string;
   vout: number;
+  address?: string;
   satoshis: number;
   height: number;
 }
@@ -1223,9 +1271,13 @@ export interface RegisterServiceData {
   category?: string;
   price?: number;
   priceCurrency?: string;
-  paymentTerms?: 'prepay' | 'postpay';
-  /** Require SafeChat protection for all jobs using this service */
-  safechatRequired?: boolean;
+  turnaround?: string;
+  paymentTerms?: 'prepay' | 'postpay' | 'split';
+  /** Enable private mode for this service */
+  privateMode?: boolean;
+  /** Require SovGuard protection for all jobs using this service */
+  sovguard?: boolean;
+  acceptedCurrencies?: Array<{ currency: string; price: number }>;
 }
 
 export interface Job {
@@ -1239,7 +1291,7 @@ export interface Job {
   amount: number;
   currency: string;
   deadline?: string | null;
-  safechatEnabled?: boolean;
+  sovguardEnabled?: boolean;
   payment?: {
     terms: 'prepay' | 'postpay' | 'split';
     address?: string | null;
@@ -1349,7 +1401,7 @@ export interface CreateJobData {
     allowThirdParty?: boolean;
     requireDeletionAttestation?: boolean;
   };
-  safechatEnabled?: boolean;
+  sovguardEnabled?: boolean;
   privateMode?: boolean;
   fee?: number;
   timestamp: number;
@@ -1385,6 +1437,7 @@ export interface Service {
   indexedAt?: string;
   blockHeight?: number;
   sessionParams?: Record<string, unknown> | null;
+  acceptedCurrencies?: Array<{ currency: string; price: number }>;
 }
 
 export interface ServiceSearchParams {
@@ -1664,3 +1717,70 @@ export interface RawIdentityData {
     value: number;
   } | null;
 }
+
+// ------------------------------------------
+// Webhook types
+// ------------------------------------------
+
+export interface WebhookRegistration {
+  id: string;
+  url: string;
+  events: string[];
+  secret: string;
+  status: 'active' | 'inactive' | 'failed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookListItem {
+  id: string;
+  url: string;
+  events: string[];
+  status: 'active' | 'inactive' | 'failed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookPayload {
+  event: string;
+  timestamp: string;
+  jobId?: string;
+  data: Record<string, unknown>;
+}
+
+// ------------------------------------------
+// Trust score types
+// ------------------------------------------
+
+export interface TrustScore {
+  score: number;
+  tier: string;
+  isNew: boolean;
+  firstSeenAt: string;
+  scoredAt: string;
+}
+
+export interface TrustDetail {
+  score: number;
+  tier: string;
+  subScores: {
+    uptime: number;
+    completion: number;
+    responsiveness: number;
+    transparency: number;
+    safety: number;
+  };
+  weights: Record<string, number>;
+  isNew: boolean;
+  penalties: string[];
+  firstSeenAt: string;
+}
+
+export interface TrustHistory {
+  snapshots: Array<{
+    score: number;
+    tier: string;
+    scoredAt: string;
+  }>;
+}
+

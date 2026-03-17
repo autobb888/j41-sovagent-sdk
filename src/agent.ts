@@ -20,7 +20,7 @@ import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypai
 import { signMessage } from './identity/signer.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
-import type { Job } from './client/index.js';
+import type { Job, RegisterServiceData } from './client/index.js';
 import type { SessionInput } from './onboarding/finalize.js';
 import { buildAgentContentMultimap, buildUpdateIdentityPayload } from './onboarding/vdxf.js';
 import type { PrivacyTier } from './privacy/tiers.js';
@@ -32,6 +32,29 @@ import { randomUUID } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
 import { buildIdentityUpdateTx } from './identity/update.js';
 import { VDXF_KEYS, PARENT_KEYS, DATA_DESCRIPTOR_KEY, makeSubDD } from './onboarding/vdxf.js';
+
+/**
+ * Thrown when identity registration is broadcast on-chain but block
+ * confirmation times out. Carries partial context so callers can save
+ * state and recover later.
+ */
+export class RegistrationTimeoutError extends Error {
+  readonly onboardId: string;
+  readonly lastStatus: string;
+  readonly identityName: string;
+
+  constructor(onboardId: string, lastStatus: string, identityName: string) {
+    super(
+      `Registration timed out waiting for block confirmation. ` +
+      `The identity "${identityName}" may already exist on-chain. ` +
+      `Use the recover command to check and resume.`
+    );
+    this.name = 'RegistrationTimeoutError';
+    this.onboardId = onboardId;
+    this.lastStatus = lastStatus;
+    this.identityName = identityName;
+  }
+}
 
 /** Default request timeout for raw fetch calls (ms) */
 const FETCH_TIMEOUT = 30_000;
@@ -125,7 +148,7 @@ export class J41Agent extends EventEmitter {
   /**
    * Authenticate with the J41 platform and return the session cookie.
    * Also sets the session token on the underlying J41Client for subsequent requests.
-   * Shared by registerWithVAP(), registerService(), and enableCanaryProtection().
+   * Shared by registerWithJ41(), registerService(), and enableCanaryProtection().
    */
   private async login(): Promise<string> {
     // Mutex: deduplicate concurrent login calls to prevent session token races
@@ -282,7 +305,11 @@ export class J41Agent extends EventEmitter {
     }
 
     if (status.status !== 'registered') {
-      throw new Error('Registration timed out — check status manually');
+      throw new RegistrationTimeoutError(
+        result.onboardId,
+        status.status,
+        `${name}.agentplatform@`,
+      );
     }
 
     // Wait for real i-address (not 'pending-lookup')
@@ -332,7 +359,7 @@ export class J41Agent extends EventEmitter {
    * @param agentData - Agent profile data
    * @returns Registration result
    */
-  async registerWithVAP(agentData: {
+  async registerWithJ41(agentData: {
     name: string;
     type: 'autonomous' | 'assisted' | 'hybrid' | 'tool';
     description: string;
@@ -388,7 +415,7 @@ export class J41Agent extends EventEmitter {
       const result = await this._client.registerAgent({ ...payload, signature: regSignature });
       agentIdResult = result.agentId;
       console.log(`[J41] ✅ Registered with J41 platform`);
-      this.emit('registeredWithVAP', { agentId: agentIdResult });
+      this.emit('registeredWithJ41', { agentId: agentIdResult });
     } catch (regErr) {
       // 409 = already registered — continue (non-fatal)
       if (regErr instanceof Error && 'statusCode' in regErr && (regErr as { statusCode: number }).statusCode === 409) {
@@ -430,7 +457,7 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
-   * Register a canary token with SafeChat (non-fatal on failure).
+   * Register a canary token with SovGuard (non-fatal on failure).
    * Uses J41Client.registerCanary() for retry + error handling (S3).
    */
   private async registerCanaryToken(): Promise<void> {
@@ -439,7 +466,7 @@ export class J41Agent extends EventEmitter {
       await this._client.registerCanary(canary.registration);
       this.canaryConfig = canary;
       this.emit('canary:registered', { active: true });
-      console.log('[J41] Canary token registered with SafeChat');
+      console.log('[J41] Canary token registered with SovGuard');
     } catch (e) {
       console.warn('[J41] Canary registration failed (non-fatal):', (e as Error).message);
     }
@@ -447,7 +474,7 @@ export class J41Agent extends EventEmitter {
 
   /**
    * Register a service offering.
-   * Must be called after registerWithVAP().
+   * Must be called after registerWithJ41().
    */
   async registerService(serviceData: {
     name: string;
@@ -456,6 +483,10 @@ export class J41Agent extends EventEmitter {
     price?: number;
     currency?: string;
     turnaround?: string;
+    paymentTerms?: 'prepay' | 'postpay' | 'split';
+    privateMode?: boolean;
+    sovguard?: boolean;
+    acceptedCurrencies?: Array<{ currency: string; price: number }>;
   }): Promise<{ serviceId: string }> {
     if (!this.identityName) {
       throw new Error('Identity name required');
@@ -464,10 +495,263 @@ export class J41Agent extends EventEmitter {
     console.log(`[J41] Registering service: ${serviceData.name}...`);
     await this.login();
 
-    // S3: Use J41Client.registerService() for retry + error handling
-    const result = await this._client.registerService(serviceData);
+    // S3: Map convenience fields (currency → priceCurrency) to API-expected shape.
+    // Price may arrive as a string from CLI tools — coerce to number.
+    const apiData: RegisterServiceData = {
+      name: serviceData.name,
+      description: serviceData.description,
+      category: serviceData.category,
+      price: typeof serviceData.price === 'string'
+        ? parseFloat(serviceData.price as unknown as string)
+        : serviceData.price,
+      priceCurrency: serviceData.currency || 'VRSC',
+      turnaround: serviceData.turnaround,
+      paymentTerms: serviceData.paymentTerms,
+      privateMode: serviceData.privateMode,
+      sovguard: serviceData.sovguard,
+      acceptedCurrencies: serviceData.acceptedCurrencies,
+    };
+    const result = await this._client.registerService(apiData);
     console.log(`[J41] ✅ Service registered: ${serviceData.name}`);
     return result;
+  }
+
+  // ------------------------------------------
+  // File sharing
+  // ------------------------------------------
+
+  /**
+   * Upload a file to a job.
+   * @param jobId - Job ID
+   * @param filePath - Local file path to upload
+   * @returns Uploaded file metadata
+   */
+  async uploadFile(jobId: string, filePath: string): Promise<import('./client/index.js').JobFile> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const data = fs.readFileSync(filePath);
+    const filename = path.basename(filePath);
+    return this._client.uploadFile(jobId, new Blob([data]), filename);
+  }
+
+  /**
+   * Upload raw data as a file to a job.
+   * @param jobId - Job ID
+   * @param data - File content as string or Buffer
+   * @param filename - Filename to use
+   * @param mimeType - Optional MIME type
+   * @returns Uploaded file metadata
+   */
+  async uploadFileData(jobId: string, data: string | Buffer | Uint8Array, filename: string, mimeType?: string): Promise<import('./client/index.js').JobFile> {
+    const buf = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
+    const blob = new Blob([buf], mimeType ? { type: mimeType } : undefined);
+    return this._client.uploadFile(jobId, blob, filename, mimeType);
+  }
+
+  /**
+   * Download a file from a job.
+   * @param jobId - Job ID
+   * @param fileId - File ID
+   * @returns File data, filename, mimeType, and checksum
+   */
+  async downloadFile(jobId: string, fileId: string): Promise<{ data: ArrayBuffer; filename: string; mimeType: string; checksum: string }> {
+    return this._client.downloadFile(jobId, fileId);
+  }
+
+  /**
+   * Download a file and save it to a local path.
+   * @param jobId - Job ID
+   * @param fileId - File ID
+   * @param outputDir - Directory to save to (defaults to cwd)
+   * @returns Local file path
+   */
+  async downloadFileTo(jobId: string, fileId: string, outputDir?: string): Promise<string> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const result = await this._client.downloadFile(jobId, fileId);
+    const dir = outputDir || process.cwd();
+    const filePath = path.join(dir, result.filename);
+    fs.writeFileSync(filePath, Buffer.from(result.data));
+    return filePath;
+  }
+
+  /**
+   * List files attached to a job.
+   */
+  async listFiles(jobId: string): Promise<{ data: import('./client/index.js').JobFile[]; meta: { count: number; maxFiles: number; totalStorageBytes: number; maxStorageBytes: number } }> {
+    return this._client.getJobFiles(jobId);
+  }
+
+  /**
+   * Delete a file from a job (uploader only).
+   */
+  async deleteFile(jobId: string, fileId: string): Promise<{ deleted: boolean }> {
+    return this._client.deleteFile(jobId, fileId);
+  }
+
+  /**
+   * Push a VDXF status update on-chain (active/inactive).
+   * Builds and broadcasts a signed identity update tx.
+   */
+  private async _updateOnChainStatus(status: 'active' | 'inactive'): Promise<string | null> {
+    if (!this.wif || !this.iAddress) return null;
+
+    try {
+      await this.login();
+
+      const vdxfAdditions: Record<string, unknown[]> = {};
+      const agentSubDDs = [makeSubDD(VDXF_KEYS.agent.status, status)];
+      vdxfAdditions[PARENT_KEYS.agent] = [{
+        [DATA_DESCRIPTOR_KEY]: {
+          version: 1,
+          flags: 32,
+          objectdata: agentSubDDs,
+          label: PARENT_KEYS.agent,
+        },
+      }];
+
+      const { data: identityData } = await this._client.getIdentityRaw();
+      const utxoResp = await this._client.getUtxos();
+      const utxos = utxoResp.utxos || utxoResp;
+
+      if (!utxos.length) {
+        console.warn(`[J41]   ⚠️  No UTXOs — cannot update on-chain status`);
+        return null;
+      }
+
+      const rawhex = buildIdentityUpdateTx({
+        wif: this.wif,
+        identityData,
+        utxos,
+        vdxfAdditions,
+        network: this.networkType,
+      });
+
+      const txResult = await this._client.broadcast(rawhex);
+      const txid = txResult.txid || txResult;
+      console.log(`[J41]   On-chain status → ${status} (txid: ${txid})`);
+      return txid as string;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[J41]   ⚠️  On-chain status update failed: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Deactivate the agent: update on-chain status, toggle platform status,
+   * and optionally remove service listings.
+   *
+   * @param options.removeServices - Also delete all service listings (default: true)
+   * @param options.onChain - Also update VDXF status to inactive on-chain (default: true)
+   * @returns Deactivation result with status
+   */
+  async deactivate(options: { removeServices?: boolean; onChain?: boolean } = {}): Promise<{
+    status: string;
+    servicesRemoved: number;
+    onChainTxid: string | null;
+  }> {
+    const removeServices = options.removeServices ?? true;
+    const onChain = options.onChain ?? true;
+
+    if (!this.identityName || !this.iAddress) {
+      throw new Error('Identity name and iAddress required for deactivation');
+    }
+
+    console.log(`[J41] Deactivating agent ${this.identityName}...`);
+    await this.login();
+
+    let servicesRemoved = 0;
+    let onChainTxid: string | null = null;
+
+    // 1. Update on-chain VDXF status
+    if (onChain) {
+      onChainTxid = await this._updateOnChainStatus('inactive');
+    }
+
+    // 2. Remove services
+    if (removeServices) {
+      try {
+        const svcResp = await this._client.getMyServices();
+        const services = svcResp.data || [];
+        for (const svc of services) {
+          try {
+            await this._client.deleteService(svc.id);
+            console.log(`[J41]   Removed service: ${svc.name}`);
+            servicesRemoved++;
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.warn(`[J41]   ⚠️  Failed to remove service ${svc.name}: ${msg}`);
+          }
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`[J41]   ⚠️  Could not list services: ${msg}`);
+      }
+    }
+
+    // 3. Toggle platform status
+    const verusId = this.iAddress || this.identityName!;
+    const timestamp = Date.now();
+    const nonce = randomUUID();
+    const message = `status:inactive:${timestamp}`;
+    const signature = signMessage(this.wif!, message, this.networkType);
+
+    const result = await this._client.setAgentStatus(
+      verusId,
+      'inactive',
+      signature,
+      timestamp,
+      nonce,
+    );
+
+    console.log(`[J41] ✅ Agent deactivated: ${result.status}`);
+    return { status: result.status, servicesRemoved, onChainTxid };
+  }
+
+  /**
+   * Reactivate a previously deactivated agent on the platform
+   * and update on-chain VDXF status to active.
+   *
+   * @param options.onChain - Also update VDXF status to active on-chain (default: true)
+   */
+  async activate(options: { onChain?: boolean } = {}): Promise<{
+    status: string;
+    onChainTxid: string | null;
+  }> {
+    const onChain = options.onChain ?? true;
+
+    if (!this.identityName) {
+      throw new Error('Identity name required for activation');
+    }
+
+    console.log(`[J41] Activating agent ${this.identityName}...`);
+    await this.login();
+
+    let onChainTxid: string | null = null;
+
+    // 1. Update on-chain VDXF status
+    if (onChain) {
+      onChainTxid = await this._updateOnChainStatus('active');
+    }
+
+    // 2. Toggle platform status
+    const verusId = this.iAddress || this.identityName;
+    const timestamp = Date.now();
+    const nonce = randomUUID();
+    const message = `status:active:${timestamp}`;
+    const signature = signMessage(this.wif!, message, this.networkType);
+
+    const result = await this._client.setAgentStatus(
+      verusId,
+      'active',
+      signature,
+      timestamp,
+      nonce,
+    );
+
+    console.log(`[J41] ✅ Agent activated: ${result.status}`);
+    return { status: result.status, onChainTxid };
   }
 
   /**
@@ -485,7 +769,7 @@ export class J41Agent extends EventEmitter {
     if (this.running) return;
 
     if (!this._client.getSessionToken()) {
-      throw new Error('Agent must be authenticated before starting. Call registerWithVAP() or login first.');
+      throw new Error('Agent must be authenticated before starting. Call registerWithJ41() or login first.');
     }
 
     // Prevent double-start race: set running before any async work
@@ -535,7 +819,7 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
-   * Connect to SafeChat WebSocket for real-time messaging.
+   * Connect to SovGuard WebSocket for real-time messaging.
    * Call after login (needs session token on client).
    */
   async connectChat(): Promise<void> {
@@ -632,7 +916,7 @@ export class J41Agent extends EventEmitter {
     });
 
     await this.chatClient.connect();
-    console.log('[CHAT] ✅ Connected to SafeChat');
+    console.log('[CHAT] ✅ Connected to SovGuard');
 
     // Join rooms for any active jobs we're the seller on
     try {
@@ -695,7 +979,7 @@ export class J41Agent extends EventEmitter {
       const timestamp = Math.floor(Date.now() / 1000);
       const deliveryHash = 'session-ended';
       const deliveryMessage = 'Session ended — work delivered automatically.';
-      const message = `VAP-DELIVER|Job:${job.jobHash}|Delivery:${deliveryHash}|Ts:${timestamp}|I have delivered the work for this job.`;
+      const message = `J41-DELIVER|Job:${job.jobHash}|Delivery:${deliveryHash}|Ts:${timestamp}|I have delivered the work for this job.`;
       const signature = signMessage(this.wif, message, this.networkType);
 
       await this._client.deliverJob(jobId, deliveryHash, signature, timestamp, deliveryMessage);
@@ -942,7 +1226,7 @@ export class J41Agent extends EventEmitter {
               }
               try {
                 const timestamp = Math.floor(Date.now() / 1000);
-                const acceptMessage = `VAP-ACCEPT|Job:${job.jobHash}|Buyer:${job.buyerVerusId}|Amt:${job.amount} ${job.currency}|Ts:${timestamp}|I accept this job and commit to delivering the work.`;
+                const acceptMessage = `J41-ACCEPT|Job:${job.jobHash}|Buyer:${job.buyerVerusId}|Amt:${job.amount} ${job.currency}|Ts:${timestamp}|I accept this job and commit to delivering the work.`;
                 const signature = signMessage(this.wif, acceptMessage, this.networkType);
                 await this._client.acceptJob(job.id, signature, timestamp);
                 this.seenJobIds.add(job.id);
@@ -1004,7 +1288,7 @@ export class J41Agent extends EventEmitter {
 
   /**
    * Enable canary protection standalone (after initial registration, or to re-enable with a new token).
-   * Generates a new canary token and registers it with SafeChat.
+   * Generates a new canary token and registers it with SovGuard.
    * Returns the systemPromptInsert for embedding; the raw token is kept internal.
    */
   async enableCanaryProtection(): Promise<{ active: boolean; systemPromptInsert: string }> {
@@ -1021,11 +1305,11 @@ export class J41Agent extends EventEmitter {
 
   /**
    * Wrap a system prompt with the agent's canary token.
-   * The canary must be initialized first (via registerWithVAP() or enableCanaryProtection()).
+   * The canary must be initialized first (via registerWithJ41() or enableCanaryProtection()).
    */
   getProtectedSystemPrompt(systemPrompt: string): string {
     if (!this.canaryConfig) {
-      throw new Error('Canary not initialized — call registerWithVAP() or enableCanaryProtection() first');
+      throw new Error('Canary not initialized — call registerWithJ41() or enableCanaryProtection() first');
     }
     return systemPrompt + '\n' + this.canaryConfig.systemPromptInsert;
   }

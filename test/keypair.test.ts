@@ -65,7 +65,7 @@ describe('Message Signing', () => {
 
   it('signs a challenge (CIdentitySignature format)', () => {
     const kp = generateKeypair('verustest');
-    const sig = signChallenge(kp.wif, 'vap-onboard:test-uuid', kp.address, 'verustest');
+    const sig = signChallenge(kp.wif, 'j41-onboard:test-uuid', kp.address, 'verustest');
     
     assert.ok(sig, 'Signature should exist');
     // Serialized CIdentitySignature: version(1) + hashType(1) + blockHeight(4) + numSigs(1) + sigLen(1) + sig(65) = 73 bytes

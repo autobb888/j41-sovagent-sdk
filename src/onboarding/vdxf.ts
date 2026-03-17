@@ -13,31 +13,35 @@ export const PARENT_KEYS = {
 } as const;
 
 export const VDXF_KEYS = {
+  // 13 agent keys (dropped version — identity versioning is implicit on-chain)
   agent: {
-    name: 'iRQbTzu3EywTKp1V7f2fQBYrWZaN8nmruT',
-    type: 'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',
-    description: 'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',
-    status: 'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',
-    owner: 'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu',
-    version: 'iEU6E9tmvSEXohKD6frHajc8jV8K2Pw75y',
-    capabilities: 'iKvdcPPkopuPsRPbfNZajRS6XrM2naqBkS',
-    endpoints: 'i5wCnfSKQNGjzCEVYJFAbupki1Jzn9PhbX',
-    protocols: 'i5HYZJ4ngrNkRTTotMgUXEVeNXpJX1YLE1',
-    services: 'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',
-    tags: 'iGgajhcBKG2Pbg62JKGfRnSzFtaaVxVMBG',
-    website: 'i8fhxWw67oyxpC5BkZnNParN6yeCBNa4ht',
-    avatar: 'iFX1zmLM7k5mptZ4TAyhGTU7xMf11pbLco',
-    category: 'iLDxWHYa2b8VmrNcwLLtaHQPjuvvuYk3pS',
+    displayName: 'iRQbTzu3EywTKp1V7f2fQBYrWZaN8nmruT',  // agentplatform::agent.displayName
+    type: 'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',          // agentplatform::agent.type
+    description: 'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',   // agentplatform::agent.description
+    status: 'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',         // agentplatform::agent.status
+    owner: 'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu',          // agentplatform::agent.owner
+    capabilities: 'iKvdcPPkopuPsRPbfNZajRS6XrM2naqBkS',   // agentplatform::agent.capabilities
+    endpoints: 'i5wCnfSKQNGjzCEVYJFAbupki1Jzn9PhbX',      // agentplatform::agent.endpoints
+    protocols: 'i5HYZJ4ngrNkRTTotMgUXEVeNXpJX1YLE1',      // agentplatform::agent.protocols
+    services: 'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',       // agentplatform::agent.services
+    tags: 'iGgajhcBKG2Pbg62JKGfRnSzFtaaVxVMBG',           // agentplatform::agent.tags
+    website: 'i8fhxWw67oyxpC5BkZnNParN6yeCBNa4ht',        // agentplatform::agent.website
+    avatar: 'iFX1zmLM7k5mptZ4TAyhGTU7xMf11pbLco',         // agentplatform::agent.avatar
+    category: 'iLDxWHYa2b8VmrNcwLLtaHQPjuvvuYk3pS',      // agentplatform::agent.category
   },
+  // 9 service keys (merged price+currency into pricing; added paymentTerms, privateMode, sovguard)
   service: {
-    name: 'iSBNgN2BMkNVfQnTCkhjhi8q1aDT9sHUrf',
-    description: 'iDPdLKnbxvM8MCRhizzBtajPjh1w3TWTtN',
-    price: 'iBkuQQUjw9pA4f8oFc3BPK5YBaakLcWGe9',
-    currency: 'i6m2Lqwpfgu8bXahbVUXiBD6LvHecWx5jQ',
-    category: 'iGKfKjQHV2hMLKB2Mv74AoiyTXLbzFxGQ7',
-    turnaround: 'iLGXYrGT7g179bd5SWweSQ3x4vobE3z9UC',
-    status: 'iBF5sDA9FaQAbF9uuUEFfBFvP63zEfYEKT',
+    name: 'iSBNgN2BMkNVfQnTCkhjhi8q1aDT9sHUrf',           // agentplatform::svc.name
+    description: 'iDPdLKnbxvM8MCRhizzBtajPjh1w3TWTtN',    // agentplatform::svc.description
+    pricing: 'iJ8xMSNHFQm4yFKdcDPXLFAEqbVhLacTCQ',        // agentplatform::svc.pricing (JSON array)
+    category: 'iGKfKjQHV2hMLKB2Mv74AoiyTXLbzFxGQ7',       // agentplatform::svc.category
+    turnaround: 'iLGXYrGT7g179bd5SWweSQ3x4vobE3z9UC',     // agentplatform::svc.turnaround
+    status: 'iBF5sDA9FaQAbF9uuUEFfBFvP63zEfYEKT',         // agentplatform::svc.status
+    paymentTerms: 'iJYDuVKMnD3MR8GZ6m3Rk5YDhqaeiVMfjv',   // agentplatform::svc.paymentTerms
+    privateMode: 'i4VEwsNBm4GsFT5bBJXq1ZH5YhEKr3SwkN',    // agentplatform::svc.privateMode
+    sovguard: 'iHJa8LgKT4VBqmSVaUb3anNcj8VzPSpUB4',       // agentplatform::svc.sovguard
   },
+  // 6 review keys
   review: {
     buyer: 'iLZZWJaAr22J4JAVyL4hveHM2MEu4Z1jBj',
     jobHash: 'iFjA7uUrbSSt58HvQiHKHEvX1ZbdEtGVB8',
@@ -46,18 +50,15 @@ export const VDXF_KEYS = {
     signature: 'iR33Uxq9t8PsZVmXSCrqCgSuFDDRqPSBNN',
     timestamp: 'iPsZqEAa6TJJuXbrKkNZaug7p7zkFGvUFG',
   },
+  // 3 platform keys
   platform: {
     datapolicy: 'i64CkpXE8aCL4gDBC3RLACjT38iUtZNwyN',
     trustlevel: 'iMHLQKGL9kyc1CmgBKdhBxYWoJ72vxvWzT',
     disputeresolution: 'i8hM7bqWUhB4Qi8WJH5FrXyQFW8aNSgSSH',
   },
+  // 1 session key (consolidated from 6 separate keys)
   session: {
-    duration: 'iSTaivA7DQNYSKJ6ESvoGRXW3Y6o4H59vX',
-    tokenLimit: 'iRJkzT2za4SmGQaPuxsUZxK38zRExJ9vJ3',
-    imageLimit: 'i6Ufi7c36kr4FS89QE86VeqbSTuGS1FHZV',
-    messageLimit: 'iEw9gH5EB5KjaJC4PuHrmBbXdGAer9Vuev',
-    maxFileSize: 'iQhhpt7rt6X9YqJY3mHVjb5W6qY8NZtghL',
-    allowedFileTypes: 'iKqBq6vTzorytcMwtYCLCZMWK8xJuHcSGw',
+    params: 'iHjLTt9P8Jb1uCYSpVpwXFbwzbPYWW4n8p',         // agentplatform::session.params (proper VDXF ID via getvdxfid)
   },
 } as const;
 
@@ -203,8 +204,7 @@ export function buildAgentContentMultimap(
     const agentSubDDs: object[] = [];
     const K = VDXF_KEYS.agent;
 
-    agentSubDDs.push(makeSubDD(K.version, '1'));
-    agentSubDDs.push(makeSubDD(K.name, profile.name));
+    agentSubDDs.push(makeSubDD(K.displayName, profile.name));
     agentSubDDs.push(makeSubDD(K.type, profile.type));
     agentSubDDs.push(makeSubDD(K.description, profile.description));
     agentSubDDs.push(makeSubDD(K.status, 'active'));
@@ -220,28 +220,25 @@ export function buildAgentContentMultimap(
 
     contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
 
-    // --- Session data ---
-    if (profile.session) {
+    // --- Session data (consolidated into single params JSON object) ---
+    if (profile.session && Object.keys(profile.session).length > 0) {
       const sessionSubDDs: object[] = [];
-      const SK = VDXF_KEYS.session;
+      sessionSubDDs.push(makeSubDD(VDXF_KEYS.session.params, JSON.stringify(profile.session)));
 
-      if (profile.session.duration != null) sessionSubDDs.push(makeSubDD(SK.duration, String(profile.session.duration)));
-      if (profile.session.tokenLimit != null) sessionSubDDs.push(makeSubDD(SK.tokenLimit, String(profile.session.tokenLimit)));
-      if (profile.session.imageLimit != null) sessionSubDDs.push(makeSubDD(SK.imageLimit, String(profile.session.imageLimit)));
-      if (profile.session.messageLimit != null) sessionSubDDs.push(makeSubDD(SK.messageLimit, String(profile.session.messageLimit)));
-      if (profile.session.maxFileSize != null) sessionSubDDs.push(makeSubDD(SK.maxFileSize, String(profile.session.maxFileSize)));
-      if (profile.session.allowedFileTypes?.length) sessionSubDDs.push(makeSubDD(SK.allowedFileTypes, JSON.stringify(profile.session.allowedFileTypes)));
-
-      if (sessionSubDDs.length > 0) {
-        contentmultimap[PARENT_KEYS.session] = [makeOuterDD(sessionSubDDs, PARENT_KEYS.session)];
-      }
+      contentmultimap[PARENT_KEYS.session] = [makeOuterDD(sessionSubDDs, PARENT_KEYS.session)];
     }
 
     // --- Platform data ---
     const platformSubDDs: object[] = [];
     const PK = VDXF_KEYS.platform;
 
-    if (profile.datapolicy) platformSubDDs.push(makeSubDD(PK.datapolicy, profile.datapolicy));
+    if (profile.datapolicy) {
+      // datapolicy is structured JSON: {retention, allowTraining, allowThirdParty, requireDeletion}
+      const policyValue = typeof profile.datapolicy === 'string'
+        ? profile.datapolicy
+        : JSON.stringify(profile.datapolicy);
+      platformSubDDs.push(makeSubDD(PK.datapolicy, policyValue));
+    }
     if (profile.trustlevel) platformSubDDs.push(makeSubDD(PK.trustlevel, profile.trustlevel));
     if (profile.disputeresolution) platformSubDDs.push(makeSubDD(PK.disputeresolution, profile.disputeresolution));
 
@@ -258,9 +255,25 @@ export function buildAgentContentMultimap(
       subDDs.push(makeSubDD(SK.name, svc.name));
       if (svc.description) subDDs.push(makeSubDD(SK.description, svc.description));
       if (svc.category) subDDs.push(makeSubDD(SK.category, svc.category));
-      if (svc.price != null) subDDs.push(makeSubDD(SK.price, String(svc.price)));
-      if (svc.currency) subDDs.push(makeSubDD(SK.currency, svc.currency));
+
+      // Build pricing array: primary price/currency + any acceptedCurrencies
+      const pricingArray: Array<{ currency: string; price: number }> = [];
+      if (svc.price != null && svc.currency) {
+        pricingArray.push({ currency: svc.currency, price: svc.price });
+      }
+      if (svc.acceptedCurrencies?.length) {
+        for (const ac of svc.acceptedCurrencies) {
+          pricingArray.push({ currency: ac.currency, price: ac.price });
+        }
+      }
+      if (pricingArray.length > 0) {
+        subDDs.push(makeSubDD(SK.pricing, JSON.stringify(pricingArray)));
+      }
+
       if (svc.turnaround) subDDs.push(makeSubDD(SK.turnaround, svc.turnaround));
+      if (svc.paymentTerms) subDDs.push(makeSubDD(SK.paymentTerms, svc.paymentTerms));
+      if (svc.privateMode != null) subDDs.push(makeSubDD(SK.privateMode, String(svc.privateMode)));
+      if (svc.sovguard != null) subDDs.push(makeSubDD(SK.sovguard, String(svc.sovguard)));
       subDDs.push(makeSubDD(SK.status, 'active'));
       return makeOuterDD(subDDs, PARENT_KEYS.service);
     });
@@ -289,7 +302,7 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
     // Take the LAST outer DD (updateidentity appends, latest wins)
     const agentData = parseOuterDD(agentEntries[agentEntries.length - 1], 'agent');
     if (agentData) {
-      if (agentData.name) profile.name = agentData.name as string;
+      if (agentData.displayName) profile.name = agentData.displayName as string;
       if (agentData.type) profile.type = agentData.type as AgentProfileInput['type'];
       if (agentData.description) profile.description = agentData.description as string;
       if (agentData.category) profile.category = agentData.category as string;
@@ -315,6 +328,13 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
   if (sessionEntries?.length) {
     const sessionData = parseOuterDD(sessionEntries[sessionEntries.length - 1], 'session');
     if (sessionData) {
+      // New consolidated format: single params JSON object
+      if (sessionData.params) {
+        const params = typeof sessionData.params === 'string'
+          ? JSON.parse(sessionData.params) : sessionData.params;
+        Object.assign(session, params);
+      }
+      // Legacy fallback: individual keys (for reading old on-chain data)
       if (sessionData.duration != null) session.duration = Number(sessionData.duration);
       if (sessionData.tokenLimit != null) session.tokenLimit = Number(sessionData.tokenLimit);
       if (sessionData.imageLimit != null) session.imageLimit = Number(sessionData.imageLimit);
@@ -342,14 +362,44 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
     for (const entry of serviceEntries) {
       const svcData = parseOuterDD(entry, 'service');
       if (svcData && svcData.name) {
-        services.push({
+        // Extract price/currency from pricing array (new format) or legacy fields
+        let price: number | undefined;
+        let currency: string | undefined;
+        let acceptedCurrencies: Array<{ currency: string; price: number }> | undefined;
+
+        if (svcData.pricing) {
+          const pricingArr: Array<{ currency: string; price: number }> =
+            typeof svcData.pricing === 'string'
+              ? JSON.parse(svcData.pricing)
+              : svcData.pricing as Array<{ currency: string; price: number }>;
+          if (pricingArr.length > 0) {
+            price = pricingArr[0].price;
+            currency = pricingArr[0].currency;
+          }
+          if (pricingArr.length > 1) {
+            acceptedCurrencies = pricingArr.slice(1);
+          }
+        } else {
+          // Legacy fallback: separate price/currency fields
+          price = svcData.price != null ? Number(svcData.price) : undefined;
+          currency = svcData.currency as string | undefined;
+        }
+
+        const svcInput: ServiceInput = {
           name: svcData.name as string,
           description: svcData.description as string | undefined,
           category: svcData.category as string | undefined,
-          price: svcData.price != null ? Number(svcData.price) : undefined,
-          currency: svcData.currency as string | undefined,
+          price,
+          currency,
           turnaround: svcData.turnaround as string | undefined,
-        });
+          paymentTerms: svcData.paymentTerms as 'prepay' | 'postpay' | undefined,
+          privateMode: svcData.privateMode != null ? svcData.privateMode === 'true' || svcData.privateMode === true : undefined,
+          sovguard: svcData.sovguard != null ? svcData.sovguard === 'true' || svcData.sovguard === true : undefined,
+        };
+        if (acceptedCurrencies) {
+          svcInput.acceptedCurrencies = acceptedCurrencies;
+        }
+        services.push(svcInput);
       }
     }
   }

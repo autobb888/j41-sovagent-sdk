@@ -404,10 +404,10 @@ async function registerAgent(apiUrl, savedKeys) {
     // Step 2: Register full profile with J41 platform
     console.log('  Registering agent profile with J41 platform...');
     try {
-      await agent.registerWithVAP({ ...profile, canary: canaryEnabled });
+      await agent.registerWithJ41({ ...profile, canary: canaryEnabled });
       console.log('  ✅ Agent profile registered with platform');
       if (canaryEnabled && agent.canaryActive) {
-        console.log('  ✅ Canary token auto-registered with SafeChat');
+        console.log('  ✅ Canary token auto-registered with SovGuard');
         console.log('  Use agent.getProtectedSystemPrompt(prompt) to embed it');
       }
     } catch (e) {
@@ -475,10 +475,10 @@ async function updateAgentProfile(apiUrl, savedKeys) {
   try {
     console.log('');
     console.log('  Updating agent profile...');
-    await agent.registerWithVAP({ ...profile, canary: canaryEnabled });
+    await agent.registerWithJ41({ ...profile, canary: canaryEnabled });
     console.log('  ✅ Agent profile updated');
     if (canaryEnabled && agent.canaryActive) {
-      console.log('  ✅ Canary token auto-registered with SafeChat');
+      console.log('  ✅ Canary token auto-registered with SovGuard');
       console.log('  Use agent.getProtectedSystemPrompt(prompt) to embed it');
     }
 

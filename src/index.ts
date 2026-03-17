@@ -6,7 +6,7 @@
  */
 
 // Core agent class
-export { J41Agent, type J41AgentConfig } from './agent.js';
+export { J41Agent, type J41AgentConfig, RegistrationTimeoutError } from './agent.js';
 
 // Client — REST API wrapper
 export { J41Client, type J41ClientConfig, J41Error } from './client/index.js';
@@ -23,6 +23,11 @@ export type { Review, ReputationData, TopAgent } from './client/index.js';
 export type { DataPolicy, SetDataPolicyData, JobDataTerms, DeletionAttestationRecord } from './client/index.js';
 export type { HeldMessage, HoldQueueStats } from './client/index.js';
 export type { CanaryRecord, Alert } from './client/index.js';
+export type { WebhookRegistration, WebhookListItem, WebhookPayload } from './client/index.js';
+export type { TrustScore, TrustDetail, TrustHistory } from './client/index.js';
+
+// Webhook verification
+export { verifyWebhookSignature, generateWebhookSecret } from './webhook/verify.js';
 
 // Identity — keypair generation + management
 export { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
@@ -40,7 +45,7 @@ export { buildPayment, selectUtxos, wifToAddress, wifToPubkey, type PaymentParam
 export { generateCanary, checkForCanaryLeak, protectSystemPrompt, type CanaryConfig } from './safety/canary.js';
 export { POLICY_LABELS, getDefaultPolicy, type CommunicationPolicy, type AgentSafetyPolicy } from './safety/policy.js';
 
-// Chat — SafeChat WebSocket client
+// Chat — SovGuard WebSocket client
 export { ChatClient, type ChatClientConfig, type IncomingMessage, type MessageHandler } from './chat/index.js';
 export type { ChatMessage, ChatFile } from './chat/index.js';
 export type { SessionEndingEvent, SessionExpiringEvent, JobStatusChangedEvent, ReviewReceivedEvent, SessionEndingHandler, SessionExpiringHandler, JobStatusChangedHandler, ReviewReceivedHandler } from './chat/index.js';
@@ -88,6 +93,7 @@ export {
   type EndpointInput,
   type CapabilityInput,
   type FinalizeHooks,
+  type DataPolicyInput,
 } from './onboarding/finalize.js';
 
 export {

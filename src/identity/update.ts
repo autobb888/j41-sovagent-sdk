@@ -123,13 +123,19 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
   const identity = Identity.fromJson(idJson);
   const idOutputScript = IdentityScript.fromIdentity(identity).toBuffer();
 
-  // 4. Select UTXOs to cover fee
-  const { selected: selectedUtxos, total: totalInput } = selectUtxos(utxos, fee);
-
-  // 5. Create key pair from WIF
+  // 4. Create key pair from WIF
   const keyPair = utxolib.ECPair.fromWIF(wif, networkObj);
   const agentAddress = keyPair.getAddress();
   const agentScript = utxolib.address.toOutputScript(agentAddress, networkObj);
+
+  // 5. Select UTXOs to cover fee — only use R-address UTXOs (not i-address)
+  // i-address UTXOs (e.g. from job payments) have a different script and can't be
+  // signed with a simple P2PKH signature.
+  const rAddressUtxos = utxos.filter(u => u.satoshis > 0 && (!u.address || u.address === agentAddress));
+  if (rAddressUtxos.length === 0) {
+    throw new Error(`No spendable R-address UTXOs for fee. Fund ${agentAddress} with at least 0.0001 VRSC.`);
+  }
+  const { selected: selectedUtxos, total: totalInput } = selectUtxos(rAddressUtxos, fee);
 
   // 6. Build the transaction
   const txb = new utxolib.TransactionBuilder(networkObj);
@@ -158,7 +164,6 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
   txb.addInput(prevIdTxid, identityData.prevOutput.vout, 0xffffffff, prevIdScript);
 
   // 7. Sign all inputs
-  const identityInputIndex = selectedUtxos.length + (change > 0 ? 0 : 0); // last input
   const SIGHASH_ALL = utxolib.Transaction.SIGHASH_ALL;
 
   // Sign UTXO inputs
