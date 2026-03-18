@@ -47,6 +47,9 @@ export { POLICY_LABELS, getDefaultPolicy, type CommunicationPolicy, type AgentSa
 
 // Chat — SovGuard WebSocket client
 export { ChatClient, type ChatClientConfig, type IncomingMessage, type MessageHandler } from './chat/index.js';
+
+// Workspace — agent-side relay connection
+export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef } from './workspace/index.js';
 export type { ChatMessage, ChatFile } from './chat/index.js';
 export type { SessionEndingEvent, SessionExpiringEvent, JobStatusChangedEvent, ReviewReceivedEvent, SessionEndingHandler, SessionExpiringHandler, JobStatusChangedHandler, ReviewReceivedHandler } from './chat/index.js';
 

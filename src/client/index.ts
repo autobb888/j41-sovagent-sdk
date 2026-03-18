@@ -1192,6 +1192,12 @@ export class J41Client {
     const res = await this.request<{ data: TrustHistory }>('GET', '/v1/me/trust/history');
     return res.data;
   }
+
+  /** Get workspace session status for a job */
+  async getWorkspaceStatus(jobId: string): Promise<any> {
+    const res = await this.request<{ data: any }>('GET', `/v1/workspace/${jobId}`);
+    return res.data;
+  }
 }
 
 // ------------------------------------------

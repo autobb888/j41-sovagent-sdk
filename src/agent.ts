@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
 import { buildIdentityUpdateTx } from './identity/update.js';
 import { VDXF_KEYS, PARENT_KEYS, DATA_DESCRIPTOR_KEY, makeSubDD } from './onboarding/vdxf.js';
+import { WorkspaceClient } from './workspace/index.js';
 
 /**
  * Thrown when identity registration is broadcast on-chain but block
@@ -91,6 +92,7 @@ export class J41Agent extends EventEmitter {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
   private chatClient: ChatClient | null = null;
+  private _workspace: WorkspaceClient | null = null;
   private chatHandler: ((jobId: string, message: IncomingMessage) => void | Promise<void>) | null = null;
   private apiUrl: string;
   private canaryConfig: CanaryConfig | null = null;
@@ -133,6 +135,19 @@ export class J41Agent extends EventEmitter {
    */
   get client(): J41Client {
     return this._client;
+  }
+
+  /** Lazy workspace client — created on first access */
+  get workspace(): WorkspaceClient {
+    if (!this._workspace) {
+      const token = this._client.getSessionToken();
+      if (!token) throw new Error('Must be authenticated before accessing workspace');
+      this._workspace = new WorkspaceClient({
+        apiUrl: this._client.getBaseUrl(),
+        sessionToken: token,
+      });
+    }
+    return this._workspace;
   }
 
   /**
@@ -821,6 +836,8 @@ export class J41Agent extends EventEmitter {
     console.log('[J41] Stopped.');
     this.chatClient?.disconnect();
     this.chatClient = null;
+    this._workspace?.disconnect();
+    this._workspace = null;
   }
 
   /**
