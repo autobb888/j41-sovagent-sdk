@@ -118,8 +118,12 @@ export {
 export {
   buildAcceptMessage,
   buildDeliverMessage,
+  buildDisputeRespondMessage,
+  buildReworkAcceptMessage,
   type AcceptMessageParams,
   type DeliverMessageParams,
+  type DisputeRespondMessageParams,
+  type ReworkAcceptMessageParams,
 } from './signing/messages.js';
 
 export {

@@ -13,8 +13,8 @@ const {
 } = require('../dist/index.js');
 
 describe('VDXF Schema', () => {
-  it('has exactly 33 keys', () => {
-    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 33);
+  it('has exactly 34 keys', () => {
+    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 34);
   });
 
   it('dropped agent.version', () => {
@@ -41,8 +41,8 @@ describe('VDXF Schema', () => {
     assert.strictEqual(Object.keys(VDXF_KEYS.agent).length, 13);
   });
 
-  it('has 10 service keys', () => {
-    assert.strictEqual(Object.keys(VDXF_KEYS.service).length, 10);
+  it('has 11 service keys', () => {
+    assert.strictEqual(Object.keys(VDXF_KEYS.service).length, 11);
   });
 });
 

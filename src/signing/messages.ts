@@ -50,3 +50,35 @@ export function buildAcceptMessage(params: AcceptMessageParams): string {
 export function buildDeliverMessage(params: DeliverMessageParams): string {
   return `J41-DELIVER|Job:${params.jobHash}|Delivery:${params.deliveryHash}|Ts:${params.timestamp}|I have delivered the work for this job.`;
 }
+
+export interface DisputeRespondMessageParams {
+  /** Job hash (or request_signature) from the platform */
+  jobHash: string;
+  /** Dispute response action */
+  action: 'refund' | 'rework' | 'rejected';
+  /** Unix timestamp (seconds) */
+  timestamp: number;
+}
+
+export interface ReworkAcceptMessageParams {
+  /** Job hash (or request_signature) from the platform */
+  jobHash: string;
+  /** Unix timestamp (seconds) */
+  timestamp: number;
+}
+
+/**
+ * Build the canonical dispute-respond message for signing.
+ * Uses first 16 chars of jobHash per platform spec.
+ */
+export function buildDisputeRespondMessage(params: DisputeRespondMessageParams): string {
+  return `J41-DISPUTE-RESPOND|Job:${params.jobHash.slice(0, 16)}|Action:${params.action}|Ts:${params.timestamp}`;
+}
+
+/**
+ * Build the canonical rework-accept message for signing.
+ * Uses first 16 chars of jobHash per platform spec.
+ */
+export function buildReworkAcceptMessage(params: ReworkAcceptMessageParams): string {
+  return `J41-REWORK-ACCEPT|Job:${params.jobHash.slice(0, 16)}|Ts:${params.timestamp}`;
+}

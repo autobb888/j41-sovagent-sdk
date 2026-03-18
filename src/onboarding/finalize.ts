@@ -76,6 +76,8 @@ export interface ServiceInput {
   privateMode?: boolean;
   sovguard?: boolean;
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
+  resolutionWindow?: number;
+  refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
 }
 
 export interface FinalizeHooks {

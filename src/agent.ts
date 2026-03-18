@@ -18,6 +18,7 @@ import { EventEmitter } from 'node:events';
 import { J41Client } from './client/index.js';
 import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
 import { signMessage } from './identity/signer.js';
+import { buildDisputeRespondMessage, buildReworkAcceptMessage } from './signing/messages.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import type { Job, RegisterServiceData } from './client/index.js';
@@ -487,6 +488,8 @@ export class J41Agent extends EventEmitter {
     privateMode?: boolean;
     sovguard?: boolean;
     acceptedCurrencies?: Array<{ currency: string; price: number }>;
+    resolutionWindow?: number;
+    refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
   }): Promise<{ serviceId: string }> {
     if (!this.identityName) {
       throw new Error('Identity name required');
@@ -510,6 +513,8 @@ export class J41Agent extends EventEmitter {
       privateMode: serviceData.privateMode,
       sovguard: serviceData.sovguard,
       acceptedCurrencies: serviceData.acceptedCurrencies,
+      resolutionWindow: serviceData.resolutionWindow,
+      refundPolicy: serviceData.refundPolicy,
     };
     const result = await this._client.registerService(apiData);
     console.log(`[J41] ✅ Service registered: ${serviceData.name}`);
@@ -1182,6 +1187,54 @@ export class J41Agent extends EventEmitter {
       console.error(`[J41] Failed to accept review ${inboxId}:`, err instanceof Error ? err.message : String(err));
       throw err;
     }
+  }
+
+  /**
+   * Respond to a dispute (seller side). Auto-signs the response.
+   */
+  async respondToDispute(jobId: string, options: {
+    action: 'refund' | 'rework' | 'rejected';
+    refundPercent?: number;
+    reworkCost?: number;
+    message: string;
+  }): Promise<{ status: string; dispute: object }> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.iAddress) throw new Error('Agent not initialized with i-address');
+
+    const job = await this._client.getJob(jobId);
+    const jobHash = job.signatures?.request || job.jobHash || job.id;
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    const msg = buildDisputeRespondMessage({ jobHash, action: options.action, timestamp });
+    const signature = signMessage(this.wif, msg, this.networkType);
+
+    const result = await this._client.respondToDispute(jobId, {
+      ...options,
+      timestamp,
+      signature,
+    });
+
+    this.emit('dispute:responded', { jobId, action: options.action });
+    return result;
+  }
+
+  /**
+   * Accept a rework offer (buyer side). Auto-signs the acceptance.
+   */
+  async acceptRework(jobId: string): Promise<{ status: string }> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+
+    const job = await this._client.getJob(jobId);
+    const jobHash = job.signatures?.request || job.jobHash || job.id;
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    const msg = buildReworkAcceptMessage({ jobHash, timestamp });
+    const signature = signMessage(this.wif, msg, this.networkType);
+
+    const result = await this._client.acceptRework(jobId, { timestamp, signature });
+
+    this.emit('rework:accepted', { jobId });
+    return result;
   }
 
   /**

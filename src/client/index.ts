@@ -514,6 +514,28 @@ export class J41Client {
     return res.data;
   }
 
+  /** Respond to a dispute (agent/seller side) */
+  async respondToDispute(jobId: string, options: {
+    action: 'refund' | 'rework' | 'rejected';
+    refundPercent?: number;
+    reworkCost?: number;
+    message: string;
+    timestamp: number;
+    signature: string;
+  }): Promise<{ status: string; dispute: object }> {
+    const res = await this.request<{ status: string; dispute: object }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/dispute/respond`, options);
+    return res;
+  }
+
+  /** Accept a rework offer (buyer side) */
+  async acceptRework(jobId: string, options: {
+    timestamp: number;
+    signature: string;
+  }): Promise<{ status: string }> {
+    const res = await this.request<{ status: string }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/dispute/rework-accept`, options);
+    return res;
+  }
+
   /** Get payment QR code data for a job */
   async getPaymentQr(jobId: string, type: 'agent' | 'fee' = 'agent'): Promise<PaymentQrResponse> {
     const query = new URLSearchParams({ type });
@@ -1278,12 +1300,14 @@ export interface RegisterServiceData {
   /** Require SovGuard protection for all jobs using this service */
   sovguard?: boolean;
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
+  resolutionWindow?: number;
+  refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
 }
 
 export interface Job {
   id: string;
   jobHash: string;
-  status: 'requested' | 'accepted' | 'in_progress' | 'delivered' | 'completed' | 'disputed' | 'cancelled';
+  status: 'requested' | 'accepted' | 'in_progress' | 'delivered' | 'completed' | 'disputed' | 'rework' | 'resolved' | 'resolved_rejected' | 'cancelled';
   buyerVerusId: string;
   sellerVerusId: string;
   serviceId?: string | null;
@@ -1323,6 +1347,14 @@ export interface Job {
   };
   createdAt: string;
   updatedAt: string;
+  dispute?: {
+    reason?: string;
+    action?: 'refund' | 'rework' | 'rejected';
+    refundPercent?: number;
+    reworkCost?: number;
+    resolvedAt?: string;
+  };
+  review_window_expires_at?: string;
 }
 
 export interface EndSessionResponse {

@@ -29,7 +29,7 @@ export const VDXF_KEYS = {
     avatar: 'iFX1zmLM7k5mptZ4TAyhGTU7xMf11pbLco',         // agentplatform::agent.avatar
     category: 'iLDxWHYa2b8VmrNcwLLtaHQPjuvvuYk3pS',      // agentplatform::agent.category
   },
-  // 9 service keys (merged price+currency into pricing; added paymentTerms, privateMode, sovguard)
+  // 11 service keys (added resolutionWindow, refundPolicy)
   service: {
     name: 'iSBNgN2BMkNVfQnTCkhjhi8q1aDT9sHUrf',           // agentplatform::svc.name
     description: 'iDPdLKnbxvM8MCRhizzBtajPjh1w3TWTtN',    // agentplatform::svc.description
@@ -40,6 +40,8 @@ export const VDXF_KEYS = {
     paymentTerms: 'iJYDuVKMnD3MR8GZ6m3Rk5YDhqaeiVMfjv',   // agentplatform::svc.paymentTerms
     privateMode: 'i4VEwsNBm4GsFT5bBJXq1ZH5YhEKr3SwkN',    // agentplatform::svc.privateMode
     sovguard: 'iHJa8LgKT4VBqmSVaUb3anNcj8VzPSpUB4',       // agentplatform::svc.sovguard
+    resolutionWindow: 'iPendingResolutionWindowKey',            // agentplatform::svc.resolutionwindow
+    refundPolicy: 'iPendingRefundPolicyKey',                    // agentplatform::svc.refundpolicy
   },
   // 6 review keys
   review: {
@@ -274,6 +276,8 @@ export function buildAgentContentMultimap(
       if (svc.paymentTerms) subDDs.push(makeSubDD(SK.paymentTerms, svc.paymentTerms));
       if (svc.privateMode != null) subDDs.push(makeSubDD(SK.privateMode, String(svc.privateMode)));
       if (svc.sovguard != null) subDDs.push(makeSubDD(SK.sovguard, String(svc.sovguard)));
+      if (svc.resolutionWindow != null) subDDs.push(makeSubDD(SK.resolutionWindow, String(svc.resolutionWindow)));
+      if (svc.refundPolicy) subDDs.push(makeSubDD(SK.refundPolicy, JSON.stringify(svc.refundPolicy)));
       subDDs.push(makeSubDD(SK.status, 'active'));
       return makeOuterDD(subDDs, PARENT_KEYS.service);
     });
@@ -398,6 +402,12 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
         };
         if (acceptedCurrencies) {
           svcInput.acceptedCurrencies = acceptedCurrencies;
+        }
+        if (svcData.resolutionWindow != null) svcInput.resolutionWindow = Number(svcData.resolutionWindow);
+        if (svcData.refundPolicy) {
+          svcInput.refundPolicy = typeof svcData.refundPolicy === 'string'
+            ? JSON.parse(svcData.refundPolicy)
+            : svcData.refundPolicy as ServiceInput['refundPolicy'];
         }
         services.push(svcInput);
       }
