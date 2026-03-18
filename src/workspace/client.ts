@@ -1,0 +1,272 @@
+/**
+ * WorkspaceClient — agent-side workspace relay connection
+ *
+ * Connects to the platform's /workspace Socket.IO namespace.
+ * Sends MCP tool calls (read_file, write_file, list_directory)
+ * and receives results from the buyer's CLI.
+ */
+
+import { io, Socket } from 'socket.io-client';
+
+export interface WorkspaceClientConfig {
+  apiUrl: string;
+  sessionToken: string;
+}
+
+export interface WorkspaceToolDef {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, any>;
+  };
+}
+
+export class WorkspaceClient {
+  private config: WorkspaceClientConfig;
+  private socket: Socket | null = null;
+  private requestId = 0;
+  private pendingRequests = new Map<string, {
+    resolve: (result: any) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }>();
+  private statusHandler: ((status: string, data?: any) => void) | null = null;
+  private disconnectHandler: ((reason: string) => void) | null = null;
+  private _connected = false;
+  private _jobId: string | null = null;
+
+  constructor(config: WorkspaceClientConfig) {
+    this.config = config;
+  }
+
+  /**
+   * Connect to the workspace relay for a specific job.
+   * Gets a one-time connect token via REST, then connects Socket.IO.
+   * Resolves when the buyer's CLI is connected (status: active).
+   */
+  async connect(jobId: string): Promise<void> {
+    this._jobId = jobId;
+
+    // Step 1: Get connect token via REST
+    const tokenRes = await fetch(`${this.config.apiUrl}/v1/workspace/${jobId}/connect-token`, {
+      headers: {
+        'Cookie': `verus_session=${this.config.sessionToken}`,
+      },
+      credentials: 'include',
+    });
+
+    if (!tokenRes.ok) {
+      const err = await tokenRes.json().catch(() => ({}));
+      throw new Error((err as any).error?.message || `Failed to get connect token: ${tokenRes.status}`);
+    }
+
+    const { data } = await tokenRes.json();
+    const { token, wsUrl } = data;
+
+    // Step 2: Extract origin from wsUrl (strip /ws path if present)
+    const origin = wsUrl.replace(/\/ws\/?$/, '');
+
+    // Step 3: Connect Socket.IO to /workspace namespace
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      this.socket = io(origin + '/workspace', {
+        path: '/ws',
+        auth: { type: 'agent', token },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionAttempts: 10,
+      });
+
+      this.socket.on('connect', () => {
+        this._connected = true;
+        // Don't resolve yet — wait for workspace to be active
+      });
+
+      this.socket.on('connect_error', (err) => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Workspace connection failed: ${err.message}`));
+        }
+      });
+
+      // MCP results from buyer's CLI
+      this.socket.on('mcp:result', (data: any) => {
+        const pending = this.pendingRequests.get(data.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingRequests.delete(data.id);
+          if (data.success) {
+            pending.resolve(data.result);
+          } else {
+            pending.reject(new Error(data.error || 'Tool call failed'));
+          }
+        }
+      });
+
+      // Status changes
+      this.socket.on('workspace:status_changed', (data: { status: string; reason?: string }) => {
+        if (data.status === 'active' && !settled) {
+          settled = true;
+          resolve(); // Buyer connected — workspace is ready
+        }
+        this.statusHandler?.(data.status, data);
+
+        // Auto-cleanup on terminal states
+        if (data.status === 'aborted' || data.status === 'completed') {
+          this._connected = false;
+        }
+      });
+
+      this.socket.on('ws:error', (data: { code: string; message: string }) => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Relay error: ${data.message}`));
+        }
+      });
+
+      this.socket.on('disconnect', (reason) => {
+        this._connected = false;
+        this.disconnectHandler?.(reason);
+      });
+
+      // Timeout — if buyer doesn't connect within 5 minutes
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('Timeout waiting for buyer to connect workspace CLI'));
+          this.disconnect();
+        }
+      }, 5 * 60 * 1000);
+    });
+  }
+
+  /**
+   * Low-level: send an MCP tool call and wait for result.
+   * The tool name should NOT have workspace_ prefix — use the raw MCP tool name
+   * (read_file, write_file, list_directory).
+   */
+  async sendToolCall(tool: string, params: Record<string, any>): Promise<any> {
+    if (!this.socket || !this._connected) {
+      throw new Error('Workspace not connected');
+    }
+
+    const id = `ws-${++this.requestId}`;
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`Tool call timeout: ${tool}`));
+      }, 30_000);
+
+      this.pendingRequests.set(id, { resolve, reject, timeout });
+
+      this.socket!.emit('mcp:call', { id, tool, params });
+    });
+  }
+
+  // ── High-level tool methods ───────────────────────────────────
+
+  async listDirectory(path: string = '.'): Promise<any[]> {
+    const result = await this.sendToolCall('list_directory', { path });
+    try {
+      return JSON.parse(result.content[0].text);
+    } catch {
+      return result;
+    }
+  }
+
+  async readFile(path: string): Promise<string> {
+    const result = await this.sendToolCall('read_file', { path });
+    return result.content[0].text;
+  }
+
+  async writeFile(path: string, content: string): Promise<string> {
+    const result = await this.sendToolCall('write_file', { path, content });
+    return result.content[0].text;
+  }
+
+  /** Signal to the buyer that the agent's work is complete */
+  signalDone(): void {
+    this.socket?.emit('workspace:agent_done');
+  }
+
+  // ── Event handlers ────────────────────────────────────────────
+
+  onStatusChanged(handler: (status: string, data?: any) => void): void {
+    this.statusHandler = handler;
+  }
+
+  onDisconnected(handler: (reason: string) => void): void {
+    this.disconnectHandler = handler;
+  }
+
+  // ── Tool definitions for executor injection ───────────────────
+
+  getAvailableTools(): WorkspaceToolDef[] {
+    return [
+      {
+        type: 'function',
+        function: {
+          name: 'workspace_list_directory',
+          description: 'List files and directories in the buyer\'s project',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string', description: 'Relative path (default: root)' } },
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'workspace_read_file',
+          description: 'Read a file from the buyer\'s project',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string', description: 'Relative path to file' } },
+            required: ['path'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'workspace_write_file',
+          description: 'Write content to a file in the buyer\'s project',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Relative path to file' },
+              content: { type: 'string', description: 'File content to write' },
+            },
+            required: ['path', 'content'],
+          },
+        },
+      },
+    ];
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────────
+
+  get isConnected(): boolean {
+    return this._connected;
+  }
+
+  get jobId(): string | null {
+    return this._jobId;
+  }
+
+  disconnect(): void {
+    for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Workspace disconnected'));
+    }
+    this.pendingRequests.clear();
+    this.socket?.disconnect();
+    this.socket = null;
+    this._connected = false;
+    this._jobId = null;
+  }
+}
