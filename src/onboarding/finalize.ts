@@ -40,29 +40,93 @@ export interface FinalizeState {
   notes?: string[];
 }
 
-export interface AgentProfileInput {
-  name: string;
-  type: 'autonomous' | 'assisted' | 'hybrid' | 'tool';
-  description: string;
-  category?: string;
-  owner?: string;
-  tags?: string[];
-  website?: string;
-  avatar?: string;
-  protocols?: ('MCP' | 'REST' | 'A2A' | 'WebSocket' | string)[];
-  endpoints?: EndpointInput[];
-  capabilities?: CapabilityInput[];
-  session?: SessionInput;
-  datapolicy?: string | DataPolicyInput;
-  trustlevel?: string;
-  disputeresolution?: string;
-}
-
 export interface DataPolicyInput {
   retention?: 'ephemeral' | 'session' | 'persistent';
   allowTraining?: boolean;
   allowThirdParty?: boolean;
   requireDeletion?: boolean;
+}
+
+/** agent.network JSON blob */
+export interface NetworkInput {
+  capabilities?: string[];
+  endpoints?: string[];
+  protocols?: string[];
+}
+
+/** agent.profile JSON blob */
+export interface ProfileInput {
+  tags?: string[];
+  website?: string;
+  avatar?: string;
+  category?: string;
+}
+
+/** platform.config JSON blob */
+export interface PlatformConfigInput {
+  datapolicy?: string | DataPolicyInput;
+  trustlevel?: string;
+  disputeresolution?: string;
+}
+
+/** workspace.capability JSON blob */
+export interface WorkspaceCapabilityInput {
+  workspace: boolean;
+  modes: ('supervised' | 'standard')[];
+  tools: string[];
+}
+
+/** job.record JSON blob */
+export interface JobRecordInput {
+  jobHash: string;
+  buyer: string;
+  description?: string;
+  amount: number;
+  currency: string;
+  completedAt: number;
+  completionSignature: string;
+  paymentTxid?: string;
+  hasWorkspace?: boolean;
+  hasReview?: boolean;
+}
+
+/** review.record JSON blob */
+export interface ReviewRecordInput {
+  buyer: string;
+  jobHash: string;
+  message: string;
+  rating: number;
+  signature: string;
+  timestamp: number;
+}
+
+/** workspace.attestation JSON blob */
+export interface WorkspaceAttestationInput {
+  jobId: string;
+  buyer: string;
+  duration: number;
+  filesRead: number;
+  filesWritten: number;
+  sovguardFlags: number;
+  completedClean: boolean;
+  mode: 'supervised' | 'standard';
+  platformSignature?: string;
+}
+
+export interface AgentProfileInput {
+  name: string;
+  type: 'autonomous' | 'assisted' | 'hybrid' | 'tool';
+  description: string;
+  owner?: string;
+  /** Consolidated network blob → agent.network */
+  network?: NetworkInput;
+  /** Consolidated profile blob → agent.profile */
+  profile?: ProfileInput;
+  session?: SessionInput;
+  /** Consolidated platform config → platform.config */
+  platformConfig?: PlatformConfigInput;
+  /** Workspace capability declaration → workspace.capability */
+  workspaceCapability?: WorkspaceCapabilityInput;
 }
 
 export interface ServiceInput {
@@ -78,6 +142,7 @@ export interface ServiceInput {
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
   resolutionWindow?: number;
   refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
+  status?: string;
 }
 
 export interface FinalizeHooks {
@@ -197,12 +262,12 @@ async function resolveProfile(mode: FinalizeMode, profile: AgentProfileInput | u
   }
 
   // Parse protocols
-  let protocols: AgentProfileInput['protocols'];
+  let protocols: string[] | undefined;
   if (protocolsRaw) {
     const parsed = protocolsRaw.split(',').map(p => p.trim()).filter(Boolean);
     const protErr = validateProtocols(parsed);
     if (protErr) throw new Error(protErr);
-    protocols = parsed as AgentProfileInput['protocols'];
+    protocols = parsed;
   }
 
   // Endpoints (interactive loop)
@@ -284,14 +349,23 @@ async function resolveProfile(mode: FinalizeMode, profile: AgentProfileInput | u
   }
 
   const result: AgentProfileInput = { name, type, description };
-  if (category) result.category = category;
   if (owner) result.owner = owner;
-  if (tags?.length) result.tags = tags;
-  if (website) result.website = website;
-  if (avatar) result.avatar = avatar;
-  if (protocols?.length) result.protocols = protocols;
-  if (endpoints.length) result.endpoints = endpoints;
-  if (capabilities.length) result.capabilities = capabilities;
+
+  // Consolidated network blob
+  const network: NetworkInput = {};
+  if (capabilities.length) network.capabilities = capabilities.map(c => c.id || c.name);
+  if (endpoints.length) network.endpoints = endpoints.map(e => e.url);
+  if (protocols?.length) network.protocols = protocols as string[];
+  if (Object.keys(network).length > 0) result.network = network;
+
+  // Consolidated profile blob
+  const profileBlob: ProfileInput = {};
+  if (category) profileBlob.category = category;
+  if (tags?.length) profileBlob.tags = tags;
+  if (website) profileBlob.website = website;
+  if (avatar) profileBlob.avatar = avatar;
+  if (Object.keys(profileBlob).length > 0) result.profile = profileBlob;
+
   if (session) result.session = session;
 
   return result;

@@ -1158,14 +1158,17 @@ export class J41Agent extends EventEmitter {
           }
         }
       } else {
-        // Build nested DD from inbox item fields
-        const subDDs: object[] = [];
-        if (inboxItem.senderVerusId) subDDs.push(makeSubDD(reviewKeys.buyer, inboxItem.senderVerusId));
-        if (inboxItem.jobHash) subDDs.push(makeSubDD(reviewKeys.jobHash, inboxItem.jobHash));
-        if (inboxItem.signature) subDDs.push(makeSubDD(reviewKeys.signature, inboxItem.signature));
-        subDDs.push(makeSubDD(reviewKeys.timestamp, String(Math.floor(Date.now() / 1000))));
-        if (inboxItem.message) subDDs.push(makeSubDD(reviewKeys.message, inboxItem.message));
-        if (inboxItem.rating != null) subDDs.push(makeSubDD(reviewKeys.rating, String(inboxItem.rating)));
+        // Build consolidated review.record JSON blob
+        const reviewRecord: Record<string, unknown> = {
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+        if (inboxItem.senderVerusId) reviewRecord.buyer = inboxItem.senderVerusId;
+        if (inboxItem.jobHash) reviewRecord.jobHash = inboxItem.jobHash;
+        if (inboxItem.signature) reviewRecord.signature = inboxItem.signature;
+        if (inboxItem.message) reviewRecord.message = inboxItem.message;
+        if (inboxItem.rating != null) reviewRecord.rating = inboxItem.rating;
+
+        const subDDs: object[] = [makeSubDD(reviewKeys.record, JSON.stringify(reviewRecord))];
 
         vdxfAdditions[PARENT_KEYS.review] = [{
           [DATA_DESCRIPTOR_KEY]: {

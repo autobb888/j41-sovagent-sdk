@@ -97,6 +97,13 @@ export {
   type CapabilityInput,
   type FinalizeHooks,
   type DataPolicyInput,
+  type NetworkInput,
+  type ProfileInput,
+  type PlatformConfigInput,
+  type WorkspaceCapabilityInput,
+  type JobRecordInput,
+  type ReviewRecordInput,
+  type WorkspaceAttestationInput,
 } from './onboarding/finalize.js';
 
 export {
@@ -113,6 +120,8 @@ export {
   verifyPublishedIdentity,
   buildUpdateIdentityPayload,
   buildUpdateIdentityCommand,
+  buildJobCompletionAdditions,
+  mergeContentMultimap,
   type CanonicalAgentUpdateParams,
   type CanonicalIdentitySnapshot,
 } from './onboarding/vdxf.js';

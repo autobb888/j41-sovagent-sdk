@@ -1,96 +1,87 @@
-import type { AgentProfileInput, ServiceInput } from './finalize.js';
+import type {
+  AgentProfileInput,
+  ServiceInput,
+  SessionInput,
+  NetworkInput,
+  ProfileInput,
+  PlatformConfigInput,
+  WorkspaceCapabilityInput,
+  JobRecordInput,
+  ReviewRecordInput,
+  WorkspaceAttestationInput,
+} from './finalize.js';
 
 // --- Constants ---
 
 export const DATA_DESCRIPTOR_KEY = 'i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv';
 
 export const PARENT_KEYS = {
-  agent:    'i8XMutgp1MRNoFoHQuzZ4ReowJd9NvCgDP', // agentplatform::agent
-  service:  'i8pfR86vr8qbTPHbhmNQFJo8MYSWKv2TZD', // agentplatform::svc
-  review:   'iMTQf3r1icnRfKLNtr5eByLKXZfsSzUt5f', // agentplatform::review
-  session:  'iGxK7ke8RptD2mkhmUgjMASFysopezAT4n', // agentplatform::session
-  platform: 'iMc951yUdCup5rFgZb8nwDFhkdd8Fktg2a', // agentplatform::platform
+  agent:     'i8XMutgp1MRNoFoHQuzZ4ReowJd9NvCgDP', // agentplatform::agent
+  service:   'i8pfR86vr8qbTPHbhmNQFJo8MYSWKv2TZD', // agentplatform::svc
+  review:    'iMTQf3r1icnRfKLNtr5eByLKXZfsSzUt5f', // agentplatform::review
+  session:   'iGxK7ke8RptD2mkhmUgjMASFysopezAT4n', // agentplatform::session
+  platform:  'iMc951yUdCup5rFgZb8nwDFhkdd8Fktg2a', // agentplatform::platform
+  bounty:    'i5L3iHEG4sFm4Lp5HSN1NLLxKQUfFaoU8S', // agentplatform::bounty
+  workspace: 'iEibMMaoeMGjoSLSY61wSPB8Qy5rXnXjAk', // agentplatform::workspace
+  job:       'iC6GEa5mq15EBatbHiwVtd53QHb8HiEDnT', // agentplatform::job
 } as const;
 
 export const VDXF_KEYS = {
-  // 13 agent keys (dropped version — identity versioning is implicit on-chain)
+  // 8 agent keys
   agent: {
-    displayName: 'iRQbTzu3EywTKp1V7f2fQBYrWZaN8nmruT',  // agentplatform::agent.displayName
-    type: 'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',          // agentplatform::agent.type
-    description: 'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',   // agentplatform::agent.description
-    status: 'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',         // agentplatform::agent.status
-    owner: 'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu',          // agentplatform::agent.owner
-    capabilities: 'iKvdcPPkopuPsRPbfNZajRS6XrM2naqBkS',   // agentplatform::agent.capabilities
-    endpoints: 'i5wCnfSKQNGjzCEVYJFAbupki1Jzn9PhbX',      // agentplatform::agent.endpoints
-    protocols: 'i5HYZJ4ngrNkRTTotMgUXEVeNXpJX1YLE1',      // agentplatform::agent.protocols
-    services: 'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',       // agentplatform::agent.services
-    tags: 'iGgajhcBKG2Pbg62JKGfRnSzFtaaVxVMBG',           // agentplatform::agent.tags
-    website: 'i8fhxWw67oyxpC5BkZnNParN6yeCBNa4ht',        // agentplatform::agent.website
-    avatar: 'iFX1zmLM7k5mptZ4TAyhGTU7xMf11pbLco',         // agentplatform::agent.avatar
-    category: 'iLDxWHYa2b8VmrNcwLLtaHQPjuvvuYk3pS',      // agentplatform::agent.category
+    displayName: 'iKkdwxhdupLgf7v2qn4JGBQHntsBb17kjW',  // agentplatform::agent.displayname
+    type:        'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',  // agentplatform::agent.type
+    description: 'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',  // agentplatform::agent.description
+    status:      'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',  // agentplatform::agent.status
+    owner:       'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu',  // agentplatform::agent.owner
+    services:    'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',  // agentplatform::agent.services
+    network:     'iJ15GBkMfyMxvEf7wivLKbXRjpqS119QrM',  // agentplatform::agent.network
+    profile:     'iAFyowB5a3W5BLEv6tE7EPHAmGhaYcGJCt',  // agentplatform::agent.profile
   },
-  // 11 service keys (added resolutionWindow, refundPolicy)
+  // 2 service schema keys (on agentplatform@ only — agents don't write these)
   service: {
-    name: 'iSBNgN2BMkNVfQnTCkhjhi8q1aDT9sHUrf',           // agentplatform::svc.name
-    description: 'iDPdLKnbxvM8MCRhizzBtajPjh1w3TWTtN',    // agentplatform::svc.description
-    pricing: 'iJ8xMSNHFQm4yFKdcDPXLFAEqbVhLacTCQ',        // agentplatform::svc.pricing (JSON array)
-    category: 'iGKfKjQHV2hMLKB2Mv74AoiyTXLbzFxGQ7',       // agentplatform::svc.category
-    turnaround: 'iLGXYrGT7g179bd5SWweSQ3x4vobE3z9UC',     // agentplatform::svc.turnaround
-    status: 'iBF5sDA9FaQAbF9uuUEFfBFvP63zEfYEKT',         // agentplatform::svc.status
-    paymentTerms: 'iJYDuVKMnD3MR8GZ6m3Rk5YDhqaeiVMfjv',   // agentplatform::svc.paymentTerms
-    privateMode: 'i4VEwsNBm4GsFT5bBJXq1ZH5YhEKr3SwkN',    // agentplatform::svc.privateMode
-    sovguard: 'iHJa8LgKT4VBqmSVaUb3anNcj8VzPSpUB4',       // agentplatform::svc.sovguard
-    resolutionWindow: 'iPendingResolutionWindowKey',            // agentplatform::svc.resolutionwindow
-    refundPolicy: 'iPendingRefundPolicyKey',                    // agentplatform::svc.refundpolicy
+    schema:  'i4D2ifpAG7BYnfJZGVT1Tph7BMkp9qZPyS',  // agentplatform::svc.schema
+    dispute: 'iFxerhcrMr2e5eWyvHiXuWHXj2dnhEZF8p',   // agentplatform::svc.dispute
   },
-  // 6 review keys
+  // 1 review key
   review: {
-    buyer: 'iLZZWJaAr22J4JAVyL4hveHM2MEu4Z1jBj',
-    jobHash: 'iFjA7uUrbSSt58HvQiHKHEvX1ZbdEtGVB8',
-    message: 'iBNhKz8Szk5BXLdKrAoY915rduCnek1N5R',
-    rating: 'i4wBxE7NWmCHgkVZipjuV3TdkTg54gUHLy',
-    signature: 'iR33Uxq9t8PsZVmXSCrqCgSuFDDRqPSBNN',
-    timestamp: 'iPsZqEAa6TJJuXbrKkNZaug7p7zkFGvUFG',
+    record: 'iLbUN8TFvMZR9uaZYY1qBmL99bJE2uYdad',   // agentplatform::review.record
   },
-  // 3 platform keys
+  // 2 bounty keys (schema only)
+  bounty: {
+    record:      'i6PC1B9vgVf8bLtHcdsNunLtr6ibtnL7ZC',  // agentplatform::bounty.record
+    application: 'iE8Z7gZmAs4NU8AqEJzV9MWHUCoUBQqfum',  // agentplatform::bounty.application
+  },
+  // 1 platform key (on agentplatform@ only)
   platform: {
-    datapolicy: 'i64CkpXE8aCL4gDBC3RLACjT38iUtZNwyN',
-    trustlevel: 'iMHLQKGL9kyc1CmgBKdhBxYWoJ72vxvWzT',
-    disputeresolution: 'i8hM7bqWUhB4Qi8WJH5FrXyQFW8aNSgSSH',
+    config: 'iMs3n1aCWQh5rmkXCNLRi8WqbzZrq3F7Ye',    // agentplatform::platform.config
   },
-  // 1 session key (consolidated from 6 separate keys)
+  // 1 session key
   session: {
-    params: 'iHjLTt9P8Jb1uCYSpVpwXFbwzbPYWW4n8p',         // agentplatform::session.params (proper VDXF ID via getvdxfid)
+    params: 'iHjLTt9P8Jb1uCYSpVpwXFbwzbPYWW4n8p',    // agentplatform::session.params
+  },
+  // 2 workspace keys
+  workspace: {
+    attestation: 'i8xp9AgvueoAHyYXbxNACMgRQfEXF82V5D',  // agentplatform::workspace.attestation
+    capability:  'iMxAXRfTWUkKBmLGEZtEJbKj58kDi1GjZ9',  // agentplatform::workspace.capability
+  },
+  // 1 job key
+  job: {
+    record: 'iPsXc7vcBzAxyjFYfPAs9PUtMLh1EJPHSn',     // agentplatform::job.record
   },
 } as const;
 
 // --- Reverse lookups ---
 
-const AGENT_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
-  Object.entries(VDXF_KEYS.agent).map(([k, v]) => [v, k])
-);
-const SERVICE_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
-  Object.entries(VDXF_KEYS.service).map(([k, v]) => [v, k])
-);
-const REVIEW_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
-  Object.entries(VDXF_KEYS.review).map(([k, v]) => [v, k])
-);
-const SESSION_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
-  Object.entries(VDXF_KEYS.session).map(([k, v]) => [v, k])
-);
-const PLATFORM_I_ADDRESS_TO_FIELD: Record<string, string> = Object.fromEntries(
-  Object.entries(VDXF_KEYS.platform).map(([k, v]) => [v, k])
-);
+const REVERSE_LOOKUPS: Record<string, Record<string, string>> = {};
+for (const [group, keys] of Object.entries(VDXF_KEYS)) {
+  REVERSE_LOOKUPS[group] = Object.fromEntries(
+    Object.entries(keys).map(([k, v]) => [v, k])
+  );
+}
 
 function getReverseLookup(type: string): Record<string, string> {
-  switch (type) {
-    case 'agent': return AGENT_I_ADDRESS_TO_FIELD;
-    case 'service': return SERVICE_I_ADDRESS_TO_FIELD;
-    case 'review': return REVIEW_I_ADDRESS_TO_FIELD;
-    case 'session': return SESSION_I_ADDRESS_TO_FIELD;
-    case 'platform': return PLATFORM_I_ADDRESS_TO_FIELD;
-    default: return {};
-  }
+  return REVERSE_LOOKUPS[type] || {};
 }
 
 // --- DataDescriptor helpers ---
@@ -186,14 +177,43 @@ export function getCanonicalVdxfDefinitionCount(): number {
   return Object.values(VDXF_KEYS).reduce((n, group) => n + Object.keys(group).length, 0);
 }
 
+// --- Service serialization helper (DRY) ---
+
+function serializeServiceArray(services: ServiceInput[]): Record<string, unknown>[] {
+  return services.map(svc => {
+    const obj: Record<string, unknown> = { name: svc.name, status: svc.status || 'active' };
+    if (svc.description) obj.description = svc.description;
+    if (svc.category) obj.category = svc.category;
+    const pricing: Array<{ currency: string; amount: string }> = [];
+    if (svc.price != null && svc.currency) {
+      pricing.push({ currency: svc.currency, amount: String(svc.price) });
+    }
+    if (svc.acceptedCurrencies?.length) {
+      for (const ac of svc.acceptedCurrencies) {
+        pricing.push({ currency: ac.currency, amount: String(ac.price) });
+      }
+    }
+    if (pricing.length) obj.pricing = pricing;
+    if (svc.turnaround) obj.turnaround = svc.turnaround;
+    if (svc.paymentTerms) obj.paymentTerms = svc.paymentTerms;
+    if (svc.privateMode != null) obj.privateMode = svc.privateMode;
+    if (svc.sovguard != null) obj.sovguard = svc.sovguard;
+    if (svc.resolutionWindow != null) obj.resolutionWindow = svc.resolutionWindow;
+    if (svc.refundPolicy) obj.refundPolicy = svc.refundPolicy;
+    return obj;
+  });
+}
+
 // --- Build nested DD contentmultimap ---
 
 /**
  * Build a nested DataDescriptor contentmultimap for an agent profile + services.
  * Produces the on-chain format: { parentKeyIAddress: [outerDD] }
  *
- * Agent, session, and platform data → single outer DD under their parent key.
- * Services → one outer DD per service under the service parent key.
+ * Agent core fields + services JSON array + network/profile blobs → agent parent key.
+ * Session params → session parent key.
+ * Platform config → platform parent key (single JSON blob).
+ * Workspace capability → workspace parent key.
  */
 export function buildAgentContentMultimap(
   profile?: AgentProfileInput,
@@ -211,14 +231,22 @@ export function buildAgentContentMultimap(
     agentSubDDs.push(makeSubDD(K.description, profile.description));
     agentSubDDs.push(makeSubDD(K.status, 'active'));
 
-    if (profile.category) agentSubDDs.push(makeSubDD(K.category, profile.category));
     if (profile.owner) agentSubDDs.push(makeSubDD(K.owner, profile.owner));
-    if (profile.tags?.length) agentSubDDs.push(makeSubDD(K.tags, JSON.stringify(profile.tags)));
-    if (profile.website) agentSubDDs.push(makeSubDD(K.website, profile.website));
-    if (profile.avatar) agentSubDDs.push(makeSubDD(K.avatar, profile.avatar));
-    if (profile.protocols?.length) agentSubDDs.push(makeSubDD(K.protocols, JSON.stringify(profile.protocols)));
-    if (profile.endpoints?.length) agentSubDDs.push(makeSubDD(K.endpoints, JSON.stringify(profile.endpoints)));
-    if (profile.capabilities?.length) agentSubDDs.push(makeSubDD(K.capabilities, JSON.stringify(profile.capabilities)));
+
+    // Services as JSON array under agent.services
+    if (services.length > 0) {
+      agentSubDDs.push(makeSubDD(K.services, JSON.stringify(serializeServiceArray(services))));
+    }
+
+    // Consolidated network blob → agent.network
+    if (profile.network && Object.keys(profile.network).length > 0) {
+      agentSubDDs.push(makeSubDD(K.network, JSON.stringify(profile.network)));
+    }
+
+    // Consolidated profile blob → agent.profile
+    if (profile.profile && Object.keys(profile.profile).length > 0) {
+      agentSubDDs.push(makeSubDD(K.profile, JSON.stringify(profile.profile)));
+    }
 
     contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
 
@@ -230,57 +258,24 @@ export function buildAgentContentMultimap(
       contentmultimap[PARENT_KEYS.session] = [makeOuterDD(sessionSubDDs, PARENT_KEYS.session)];
     }
 
-    // --- Platform data ---
-    const platformSubDDs: object[] = [];
-    const PK = VDXF_KEYS.platform;
-
-    if (profile.datapolicy) {
-      // datapolicy is structured JSON: {retention, allowTraining, allowThirdParty, requireDeletion}
-      const policyValue = typeof profile.datapolicy === 'string'
-        ? profile.datapolicy
-        : JSON.stringify(profile.datapolicy);
-      platformSubDDs.push(makeSubDD(PK.datapolicy, policyValue));
-    }
-    if (profile.trustlevel) platformSubDDs.push(makeSubDD(PK.trustlevel, profile.trustlevel));
-    if (profile.disputeresolution) platformSubDDs.push(makeSubDD(PK.disputeresolution, profile.disputeresolution));
-
-    if (platformSubDDs.length > 0) {
+    // --- Platform data (single config JSON blob) ---
+    if (profile.platformConfig && Object.keys(profile.platformConfig).length > 0) {
+      const platformSubDDs: object[] = [];
+      platformSubDDs.push(makeSubDD(VDXF_KEYS.platform.config, JSON.stringify(profile.platformConfig)));
       contentmultimap[PARENT_KEYS.platform] = [makeOuterDD(platformSubDDs, PARENT_KEYS.platform)];
     }
-  }
 
-  // --- Services (one outer DD per service) ---
-  if (services.length > 0) {
-    const SK = VDXF_KEYS.service;
-    contentmultimap[PARENT_KEYS.service] = services.map((svc) => {
-      const subDDs: object[] = [];
-      subDDs.push(makeSubDD(SK.name, svc.name));
-      if (svc.description) subDDs.push(makeSubDD(SK.description, svc.description));
-      if (svc.category) subDDs.push(makeSubDD(SK.category, svc.category));
-
-      // Build pricing array: primary price/currency + any acceptedCurrencies
-      const pricingArray: Array<{ currency: string; price: number }> = [];
-      if (svc.price != null && svc.currency) {
-        pricingArray.push({ currency: svc.currency, price: svc.price });
-      }
-      if (svc.acceptedCurrencies?.length) {
-        for (const ac of svc.acceptedCurrencies) {
-          pricingArray.push({ currency: ac.currency, price: ac.price });
-        }
-      }
-      if (pricingArray.length > 0) {
-        subDDs.push(makeSubDD(SK.pricing, JSON.stringify(pricingArray)));
-      }
-
-      if (svc.turnaround) subDDs.push(makeSubDD(SK.turnaround, svc.turnaround));
-      if (svc.paymentTerms) subDDs.push(makeSubDD(SK.paymentTerms, svc.paymentTerms));
-      if (svc.privateMode != null) subDDs.push(makeSubDD(SK.privateMode, String(svc.privateMode)));
-      if (svc.sovguard != null) subDDs.push(makeSubDD(SK.sovguard, String(svc.sovguard)));
-      if (svc.resolutionWindow != null) subDDs.push(makeSubDD(SK.resolutionWindow, String(svc.resolutionWindow)));
-      if (svc.refundPolicy) subDDs.push(makeSubDD(SK.refundPolicy, JSON.stringify(svc.refundPolicy)));
-      subDDs.push(makeSubDD(SK.status, 'active'));
-      return makeOuterDD(subDDs, PARENT_KEYS.service);
-    });
+    // --- Workspace capability ---
+    if (profile.workspaceCapability) {
+      const wsSubDDs: object[] = [];
+      wsSubDDs.push(makeSubDD(VDXF_KEYS.workspace.capability, JSON.stringify(profile.workspaceCapability)));
+      contentmultimap[PARENT_KEYS.workspace] = [makeOuterDD(wsSubDDs, PARENT_KEYS.workspace)];
+    }
+  } else if (services.length > 0) {
+    // Services-only (no profile) — still goes under agent parent
+    const agentSubDDs: object[] = [];
+    agentSubDDs.push(makeSubDD(VDXF_KEYS.agent.services, JSON.stringify(serializeServiceArray(services))));
+    contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
   }
 
   return contentmultimap;
@@ -290,7 +285,7 @@ export function buildAgentContentMultimap(
 
 /**
  * Decode a nested DataDescriptor contentmultimap back into an AgentProfileInput + services.
- * Handles both nested DD format (primary) and legacy flat hex format (fallback).
+ * Handles the 18-key consolidated format.
  */
 export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
   profile: AgentProfileInput;
@@ -300,7 +295,7 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
   const session: Partial<NonNullable<AgentProfileInput['session']>> = {};
   const services: ServiceInput[] = [];
 
-  // --- Try nested DD format first ---
+  // --- Agent data ---
   const agentEntries = cmm[PARENT_KEYS.agent];
   if (agentEntries?.length) {
     // Take the LAST outer DD (updateidentity appends, latest wins)
@@ -309,30 +304,77 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
       if (agentData.displayName) profile.name = agentData.displayName as string;
       if (agentData.type) profile.type = agentData.type as AgentProfileInput['type'];
       if (agentData.description) profile.description = agentData.description as string;
-      if (agentData.category) profile.category = agentData.category as string;
       if (agentData.owner) profile.owner = agentData.owner as string;
-      if (agentData.website) profile.website = agentData.website as string;
-      if (agentData.avatar) profile.avatar = agentData.avatar as string;
-      if (agentData.tags) {
-        profile.tags = typeof agentData.tags === 'string' ? JSON.parse(agentData.tags) : agentData.tags as string[];
+
+      // Decode consolidated network blob
+      if (agentData.network) {
+        const net = typeof agentData.network === 'string'
+          ? JSON.parse(agentData.network) : agentData.network;
+        profile.network = net as NetworkInput;
       }
-      if (agentData.protocols) {
-        profile.protocols = typeof agentData.protocols === 'string' ? JSON.parse(agentData.protocols) : agentData.protocols as string[];
+
+      // Decode consolidated profile blob
+      if (agentData.profile) {
+        const prof = typeof agentData.profile === 'string'
+          ? JSON.parse(agentData.profile) : agentData.profile;
+        profile.profile = prof as ProfileInput;
       }
-      if (agentData.endpoints) {
-        profile.endpoints = typeof agentData.endpoints === 'string' ? JSON.parse(agentData.endpoints) : agentData.endpoints as AgentProfileInput['endpoints'];
-      }
-      if (agentData.capabilities) {
-        profile.capabilities = typeof agentData.capabilities === 'string' ? JSON.parse(agentData.capabilities) : agentData.capabilities as AgentProfileInput['capabilities'];
+
+      // Decode services JSON array
+      if (agentData.services) {
+        const svcArr: Record<string, unknown>[] = typeof agentData.services === 'string'
+          ? JSON.parse(agentData.services) : agentData.services as Record<string, unknown>[];
+        for (const svc of svcArr) {
+          if (!svc.name) continue;
+          let price: number | undefined;
+          let currency: string | undefined;
+          let acceptedCurrencies: Array<{ currency: string; price: number }> | undefined;
+
+          if (svc.pricing && Array.isArray(svc.pricing)) {
+            const pricingArr = svc.pricing as Array<Record<string, unknown>>;
+            if (pricingArr.length > 0) {
+              price = Number((pricingArr[0] as Record<string, unknown>).amount ?? (pricingArr[0] as Record<string, unknown>).price);
+              currency = (pricingArr[0] as Record<string, unknown>).currency as string;
+            }
+            if (pricingArr.length > 1) {
+              acceptedCurrencies = pricingArr.slice(1).map(p => ({
+                currency: p.currency as string,
+                price: Number(p.amount ?? p.price),
+              }));
+            }
+          }
+
+          const svcInput: ServiceInput = {
+            name: svc.name as string,
+            description: svc.description as string | undefined,
+            category: svc.category as string | undefined,
+            price,
+            currency,
+            turnaround: svc.turnaround as string | undefined,
+            paymentTerms: svc.paymentTerms as ServiceInput['paymentTerms'],
+            privateMode: svc.privateMode != null ? svc.privateMode === true || svc.privateMode === 'true' : undefined,
+            sovguard: svc.sovguard != null ? svc.sovguard === true || svc.sovguard === 'true' : undefined,
+            status: svc.status as string | undefined,
+          };
+          if (acceptedCurrencies) svcInput.acceptedCurrencies = acceptedCurrencies;
+          if (svc.resolutionWindow != null) svcInput.resolutionWindow = Number(svc.resolutionWindow);
+          if (svc.refundPolicy) {
+            svcInput.refundPolicy = typeof svc.refundPolicy === 'string'
+              ? JSON.parse(svc.refundPolicy as string)
+              : svc.refundPolicy as ServiceInput['refundPolicy'];
+          }
+          services.push(svcInput);
+        }
       }
     }
   }
 
+  // --- Session data ---
   const sessionEntries = cmm[PARENT_KEYS.session];
   if (sessionEntries?.length) {
     const sessionData = parseOuterDD(sessionEntries[sessionEntries.length - 1], 'session');
     if (sessionData) {
-      // New consolidated format: single params JSON object
+      // Consolidated format: single params JSON object
       if (sessionData.params) {
         const params = typeof sessionData.params === 'string'
           ? JSON.parse(sessionData.params) : sessionData.params;
@@ -351,66 +393,27 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
     }
   }
 
+  // --- Platform data (single config JSON blob) ---
   const platformEntries = cmm[PARENT_KEYS.platform];
   if (platformEntries?.length) {
     const platformData = parseOuterDD(platformEntries[platformEntries.length - 1], 'platform');
     if (platformData) {
-      if (platformData.datapolicy) profile.datapolicy = platformData.datapolicy as string;
-      if (platformData.trustlevel) profile.trustlevel = platformData.trustlevel as string;
-      if (platformData.disputeresolution) profile.disputeresolution = platformData.disputeresolution as string;
+      if (platformData.config) {
+        const cfg = typeof platformData.config === 'string'
+          ? JSON.parse(platformData.config) : platformData.config;
+        profile.platformConfig = cfg as PlatformConfigInput;
+      }
     }
   }
 
-  const serviceEntries = cmm[PARENT_KEYS.service];
-  if (serviceEntries?.length) {
-    for (const entry of serviceEntries) {
-      const svcData = parseOuterDD(entry, 'service');
-      if (svcData && svcData.name) {
-        // Extract price/currency from pricing array (new format) or legacy fields
-        let price: number | undefined;
-        let currency: string | undefined;
-        let acceptedCurrencies: Array<{ currency: string; price: number }> | undefined;
-
-        if (svcData.pricing) {
-          const pricingArr: Array<{ currency: string; price: number }> =
-            typeof svcData.pricing === 'string'
-              ? JSON.parse(svcData.pricing)
-              : svcData.pricing as Array<{ currency: string; price: number }>;
-          if (pricingArr.length > 0) {
-            price = pricingArr[0].price;
-            currency = pricingArr[0].currency;
-          }
-          if (pricingArr.length > 1) {
-            acceptedCurrencies = pricingArr.slice(1);
-          }
-        } else {
-          // Legacy fallback: separate price/currency fields
-          price = svcData.price != null ? Number(svcData.price) : undefined;
-          currency = svcData.currency as string | undefined;
-        }
-
-        const svcInput: ServiceInput = {
-          name: svcData.name as string,
-          description: svcData.description as string | undefined,
-          category: svcData.category as string | undefined,
-          price,
-          currency,
-          turnaround: svcData.turnaround as string | undefined,
-          paymentTerms: svcData.paymentTerms as 'prepay' | 'postpay' | undefined,
-          privateMode: svcData.privateMode != null ? svcData.privateMode === 'true' || svcData.privateMode === true : undefined,
-          sovguard: svcData.sovguard != null ? svcData.sovguard === 'true' || svcData.sovguard === true : undefined,
-        };
-        if (acceptedCurrencies) {
-          svcInput.acceptedCurrencies = acceptedCurrencies;
-        }
-        if (svcData.resolutionWindow != null) svcInput.resolutionWindow = Number(svcData.resolutionWindow);
-        if (svcData.refundPolicy) {
-          svcInput.refundPolicy = typeof svcData.refundPolicy === 'string'
-            ? JSON.parse(svcData.refundPolicy)
-            : svcData.refundPolicy as ServiceInput['refundPolicy'];
-        }
-        services.push(svcInput);
-      }
+  // --- Workspace capability ---
+  const workspaceEntries = cmm[PARENT_KEYS.workspace];
+  if (workspaceEntries?.length) {
+    const wsData = parseOuterDD(workspaceEntries[workspaceEntries.length - 1], 'workspace');
+    if (wsData?.capability) {
+      const cap = typeof wsData.capability === 'string'
+        ? JSON.parse(wsData.capability) : wsData.capability;
+      profile.workspaceCapability = cap as WorkspaceCapabilityInput;
     }
   }
 
@@ -534,4 +537,57 @@ export function buildUpdateIdentityCommand(payload: Record<string, unknown>, cha
   if (chain === 'verustest') args.push('-chain=vrsctest');
   args.push('updateidentity', JSON.stringify(payload));
   return args;
+}
+
+// --- Job completion helpers ---
+
+/**
+ * Build contentmultimap additions for job completion (read-merge-write pattern).
+ * Creates outer DDs for job record, optional review record, and optional workspace attestation.
+ */
+export function buildJobCompletionAdditions(params: {
+  jobRecord: JobRecordInput;
+  reviewRecord?: ReviewRecordInput;
+  workspaceAttestation?: WorkspaceAttestationInput;
+}): Record<string, unknown[]> {
+  const additions: Record<string, unknown[]> = {};
+
+  const jobSubDDs = [makeSubDD(VDXF_KEYS.job.record, JSON.stringify(params.jobRecord))];
+  additions[PARENT_KEYS.job] = [makeOuterDD(jobSubDDs, PARENT_KEYS.job)];
+
+  if (params.reviewRecord) {
+    const reviewSubDDs = [makeSubDD(VDXF_KEYS.review.record, JSON.stringify(params.reviewRecord))];
+    additions[PARENT_KEYS.review] = [makeOuterDD(reviewSubDDs, PARENT_KEYS.review)];
+  }
+
+  if (params.workspaceAttestation) {
+    const wsSubDDs = [makeSubDD(VDXF_KEYS.workspace.attestation, JSON.stringify(params.workspaceAttestation))];
+    additions[PARENT_KEYS.workspace] = [makeOuterDD(wsSubDDs, PARENT_KEYS.workspace)];
+  }
+
+  return additions;
+}
+
+/**
+ * Merge two contentmultimaps. Values from `additions` are appended to `existing`.
+ */
+export function mergeContentMultimap(
+  existing: Record<string, unknown[]>,
+  additions: Record<string, unknown[]>,
+): Record<string, unknown[]> {
+  const merged: Record<string, unknown[]> = {};
+
+  for (const [key, values] of Object.entries(existing)) {
+    merged[key] = Array.isArray(values) ? [...values] : [values];
+  }
+
+  for (const [key, values] of Object.entries(additions)) {
+    if (merged[key]) {
+      merged[key] = [...merged[key], ...values];
+    } else {
+      merged[key] = [...values];
+    }
+  }
+
+  return merged;
 }
