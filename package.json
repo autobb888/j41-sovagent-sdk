@@ -24,7 +24,7 @@
     "postinstall": "node scripts/postinstall.js",
     "prepare": "tsc",
     "prepublishOnly": "tsc --noEmit",
-    "test": "node --test test/*.test.ts",
+    "test": "npx tsx --test test/*.test.ts",
     "lint": "tsc --noEmit"
   },
   "keywords": [
