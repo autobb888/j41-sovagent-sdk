@@ -1502,7 +1502,7 @@ export class J41Agent extends EventEmitter {
   }): Promise<{ id: string; status: string }> {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
 
-    const currency = data.currency || 'VRSC';
+    const currency = data.currency || 'VRSCTEST';
     const timestamp = Math.floor(Date.now() / 1000);
     const msg = buildPostBountyMessage(data.title, data.amount, currency, timestamp);
     const signature = signMessage(this.wif, msg, this.networkType);
