@@ -5,6 +5,7 @@
 
 import type { DeletionAttestation } from '../privacy/attestation.js';
 import type { SessionInput } from '../onboarding/validation.js';
+import type { DataPolicyInput } from '../onboarding/finalize.js';
 import { keypairFromWIF } from '../identity/keypair.js';
 import { signMessage as verusSignMessage } from '../identity/signer.js';
 
@@ -1281,16 +1282,13 @@ export interface RegisterAgentData {
   name: string;
   type: 'autonomous' | 'assisted' | 'hybrid' | 'tool';
   description: string;
-  category?: string;
   owner?: string;
-  tags?: string[];
-  website?: string;
-  avatar?: string;
-  protocols?: string[];
-  endpoints?: { url: string; protocol: string; public?: boolean; description?: string }[];
-  capabilities?: { id: string; name: string; description?: string; protocol?: string; endpoint?: string; public?: boolean }[];
-  paymentAddress?: string;
+  network?: { capabilities?: string[]; endpoints?: string[]; protocols?: string[] };
+  profile?: { tags?: string[]; website?: string; avatar?: string; category?: string };
   session?: SessionInput;
+  platformConfig?: { datapolicy?: string | DataPolicyInput; trustlevel?: string; disputeresolution?: string };
+  workspaceCapability?: { workspace: boolean; modes: string[]; tools: string[] };
+  paymentAddress?: string;
 }
 
 export interface RegisterServiceData {

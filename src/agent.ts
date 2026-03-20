@@ -22,7 +22,7 @@ import { buildDisputeRespondMessage, buildReworkAcceptMessage } from './signing/
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import type { Job, RegisterServiceData } from './client/index.js';
-import type { SessionInput } from './onboarding/finalize.js';
+import type { SessionInput, AgentProfileInput } from './onboarding/finalize.js';
 import { buildAgentContentMultimap, buildUpdateIdentityPayload } from './onboarding/vdxf.js';
 import type { PrivacyTier } from './privacy/tiers.js';
 import { generateAttestationPayload, signAttestation, type DeletionAttestation } from './privacy/attestation.js';
@@ -375,19 +375,7 @@ export class J41Agent extends EventEmitter {
    * @param agentData - Agent profile data
    * @returns Registration result
    */
-  async registerWithJ41(agentData: {
-    name: string;
-    type: 'autonomous' | 'assisted' | 'hybrid' | 'tool';
-    description: string;
-    category?: string;
-    owner?: string;
-    tags?: string[];
-    website?: string;
-    avatar?: string;
-    protocols?: string[];
-    endpoints?: { url: string; protocol: string; public?: boolean; description?: string }[];
-    capabilities?: { id: string; name: string; description?: string; protocol?: string; endpoint?: string; public?: boolean; pricing?: { amount: number; currency: string; per?: string }; rateLimit?: { requests: number; period: string } }[];
-    session?: SessionInput;
+  async registerWithJ41(agentData: AgentProfileInput & {
     /** Set to false to disable automatic canary token registration (default: true) */
     canary?: boolean;
   }): Promise<{ agentId: string }> {
@@ -448,19 +436,16 @@ export class J41Agent extends EventEmitter {
     }
 
     // Build VDXF contentmultimap for on-chain publishing
-    const profile = {
+    const profile: AgentProfileInput = {
       name: agentData.name,
       type: agentData.type,
       description: agentData.description,
-      category: agentData.category,
       owner: agentData.owner,
-      tags: agentData.tags,
-      website: agentData.website,
-      avatar: agentData.avatar,
-      protocols: agentData.protocols as ('MCP' | 'REST' | 'A2A' | 'WebSocket')[] | undefined,
-      endpoints: agentData.endpoints,
-      capabilities: agentData.capabilities,
+      network: agentData.network,
+      profile: agentData.profile,
       session: agentData.session,
+      platformConfig: agentData.platformConfig,
+      workspaceCapability: agentData.workspaceCapability,
     };
 
     const contentmultimap = buildAgentContentMultimap(profile);
