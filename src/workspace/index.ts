@@ -1,1 +1,1 @@
-export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef } from './client.js';
+export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef, type WorkspaceStats } from './client.js';

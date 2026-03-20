@@ -22,6 +22,13 @@ export interface WorkspaceToolDef {
   };
 }
 
+export interface WorkspaceStats {
+  filesRead: number;
+  filesWritten: number;
+  listDirectoryCalls: number;
+  duration: number;
+}
+
 export class WorkspaceClient {
   private config: WorkspaceClientConfig;
   private socket: Socket | null = null;
@@ -35,6 +42,12 @@ export class WorkspaceClient {
   private disconnectHandler: ((reason: string) => void) | null = null;
   private _connected = false;
   private _jobId: string | null = null;
+  private _stats = {
+    filesRead: 0,
+    filesWritten: 0,
+    listDirectoryCalls: 0,
+    connectedAt: 0,
+  };
 
   constructor(config: WorkspaceClientConfig) {
     this.config = config;
@@ -82,6 +95,7 @@ export class WorkspaceClient {
 
       this.socket.on('connect', () => {
         this._connected = true;
+        this._stats.connectedAt = Date.now();
         // Don't resolve yet — wait for workspace to be active
       });
 
@@ -170,6 +184,7 @@ export class WorkspaceClient {
   // ── High-level tool methods ───────────────────────────────────
 
   async listDirectory(path: string = '.'): Promise<any[]> {
+    this._stats.listDirectoryCalls++;
     const result = await this.sendToolCall('list_directory', { path });
     try {
       return JSON.parse(result.content[0].text);
@@ -179,11 +194,13 @@ export class WorkspaceClient {
   }
 
   async readFile(path: string): Promise<string> {
+    this._stats.filesRead++;
     const result = await this.sendToolCall('read_file', { path });
     return result.content[0].text;
   }
 
   async writeFile(path: string, content: string): Promise<string> {
+    this._stats.filesWritten++;
     const result = await this.sendToolCall('write_file', { path, content });
     return result.content[0].text;
   }
@@ -191,6 +208,18 @@ export class WorkspaceClient {
   /** Signal to the buyer that the agent's work is complete */
   signalDone(): void {
     this.socket?.emit('workspace:agent_done');
+  }
+
+  /** Get workspace usage stats for attestation */
+  getStats(): WorkspaceStats {
+    return {
+      filesRead: this._stats.filesRead,
+      filesWritten: this._stats.filesWritten,
+      listDirectoryCalls: this._stats.listDirectoryCalls,
+      duration: this._stats.connectedAt
+        ? Math.floor((Date.now() - this._stats.connectedAt) / 1000)
+        : 0,
+    };
   }
 
   // ── Event handlers ────────────────────────────────────────────
@@ -259,6 +288,7 @@ export class WorkspaceClient {
   }
 
   disconnect(): void {
+    this._stats = { filesRead: 0, filesWritten: 0, listDirectoryCalls: 0, connectedAt: 0 };
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
       pending.reject(new Error('Workspace disconnected'));
