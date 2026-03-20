@@ -1208,7 +1208,8 @@ export class J41Agent extends EventEmitter {
     if (!this.iAddress) throw new Error('Agent not initialized with i-address');
 
     const job = await this._client.getJob(jobId);
-    const jobHash = job.signatures?.request || job.jobHash || job.id;
+    if (!job.jobHash) throw new Error(`Job ${jobId} is missing jobHash — cannot sign dispute response`);
+    const jobHash = job.jobHash;
     const timestamp = Math.floor(Date.now() / 1000);
 
     const msg = buildDisputeRespondMessage({ jobHash, action: options.action, timestamp });
@@ -1231,7 +1232,8 @@ export class J41Agent extends EventEmitter {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
 
     const job = await this._client.getJob(jobId);
-    const jobHash = job.signatures?.request || job.jobHash || job.id;
+    if (!job.jobHash) throw new Error(`Job ${jobId} is missing jobHash — cannot sign rework acceptance`);
+    const jobHash = job.jobHash;
     const timestamp = Math.floor(Date.now() / 1000);
 
     const msg = buildReworkAcceptMessage({ jobHash, timestamp });

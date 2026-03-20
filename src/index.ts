@@ -23,7 +23,7 @@ export type { Review, ReputationData, TopAgent } from './client/index.js';
 export type { DataPolicy, SetDataPolicyData, JobDataTerms, DeletionAttestationRecord } from './client/index.js';
 export type { HeldMessage, HoldQueueStats } from './client/index.js';
 export type { CanaryRecord, Alert } from './client/index.js';
-export type { WebhookRegistration, WebhookListItem, WebhookPayload, UpdateWebhookData } from './client/index.js';
+export type { WebhookRegistration, WebhookListItem, WebhookPayload, UpdateWebhookData, WebhookDelivery } from './client/index.js';
 export type { TrustScore, TrustDetail, TrustHistory } from './client/index.js';
 export type { Bounty, BountyApplication, PostBountyData, BountySearchParams } from './client/index.js';
 export type { Notification } from './client/index.js';

@@ -2142,11 +2142,11 @@ export interface UpdateWebhookData {
 
 export interface WebhookDelivery {
   id: string;
-  webhookId: string;
-  event: string;
-  statusCode: number | null;
-  success: boolean;
-  error?: string | null;
-  deliveredAt: string;
+  eventType: string;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  deliveredAt: string | null;
 }
 
