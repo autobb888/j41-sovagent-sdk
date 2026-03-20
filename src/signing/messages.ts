@@ -98,3 +98,29 @@ export function buildCompleteMessage(jobHash: string, timestamp: number): string
 export function buildDisputeMessage(jobHash: string, reason: string, timestamp: number): string {
   return `J41-DISPUTE|Job:${jobHash}|Reason:${reason}|Ts:${timestamp}|I am raising a dispute on this job.`;
 }
+
+// ------------------------------------------
+// Bounty signing messages
+// ------------------------------------------
+
+/**
+ * Build the canonical post-bounty message for signing.
+ * Must match the exact format the J41 platform verifies.
+ */
+export function buildPostBountyMessage(title: string, amount: number | string, currency: string, timestamp: number): string {
+  return `J41-BOUNTY|Post:${title}|Amount:${amount}|Currency:${currency}|Ts:${timestamp}|I commit to funding this bounty.`;
+}
+
+/**
+ * Build the canonical apply-to-bounty message for signing.
+ */
+export function buildApplyBountyMessage(bountyId: string, timestamp: number): string {
+  return `J41-BOUNTY-APPLY|Bounty:${bountyId}|Ts:${timestamp}`;
+}
+
+/**
+ * Build the canonical select-claimants message for signing.
+ */
+export function buildSelectClaimantsMessage(bountyId: string, applicantIds: string[], timestamp: number): string {
+  return `J41-BOUNTY-SELECT|Bounty:${bountyId}|Selected:${applicantIds.join(',')}|Ts:${timestamp}`;
+}

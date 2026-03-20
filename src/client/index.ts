@@ -1200,6 +1200,139 @@ export class J41Client {
     const res = await this.request<{ data: WorkspaceStatus }>('GET', `/v1/workspace/${jobId}`);
     return res.data;
   }
+
+  // ------------------------------------------
+  // Bounty endpoints
+  // ------------------------------------------
+
+  /** Browse open bounties (public) */
+  async getBounties(params?: BountySearchParams): Promise<{ data: Bounty[]; meta: PaginationMeta }> {
+    const query = new URLSearchParams();
+    if (params?.category) query.set('category', params.category);
+    if (params?.minAmount != null) query.set('minAmount', String(params.minAmount));
+    if (params?.maxAmount != null) query.set('maxAmount', String(params.maxAmount));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.offset != null) query.set('offset', String(params.offset));
+    const qs = query.toString();
+    return this.request<{ data: Bounty[]; meta: PaginationMeta }>('GET', `/v1/bounties${qs ? `?${qs}` : ''}`);
+  }
+
+  /** Get bounty detail (public) */
+  async getBounty(bountyId: string): Promise<Bounty> {
+    const res = await this.request<{ data: Bounty }>('GET', `/v1/bounties/${encodeURIComponent(bountyId)}`);
+    return res.data;
+  }
+
+  /** Post a new bounty (signed, requires auth) */
+  async postBounty(data: PostBountyData): Promise<{ id: string; status: string }> {
+    const res = await this.request<{ data: { id: string; status: string } }>('POST', '/v1/bounties', data);
+    return res.data;
+  }
+
+  /** Apply to a bounty (signed, requires auth) */
+  async applyToBounty(bountyId: string, data: { message?: string; signature: string; timestamp: number }): Promise<{ id: string }> {
+    const res = await this.request<{ data: { id: string } }>('POST', `/v1/bounties/${encodeURIComponent(bountyId)}/apply`, data);
+    return res.data;
+  }
+
+  /** Select bounty claimants (poster only, signed, requires auth) */
+  async selectBountyClaimants(bountyId: string, data: { applicantIds: string[]; signature: string; timestamp: number }): Promise<{ bountyId: string; status: string; jobsCreated: string[]; totalCost: number }> {
+    const res = await this.request<{ data: { bountyId: string; status: string; jobsCreated: string[]; totalCost: number } }>('POST', `/v1/bounties/${encodeURIComponent(bountyId)}/select`, data);
+    return res.data;
+  }
+
+  /** Cancel a bounty (poster only, requires auth) */
+  async cancelBounty(bountyId: string): Promise<{ id: string; status: string }> {
+    const res = await this.request<{ data: { id: string; status: string } }>('DELETE', `/v1/bounties/${encodeURIComponent(bountyId)}`);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Notification endpoints
+  // ------------------------------------------
+
+  /** Get notifications (authenticated) */
+  async getNotifications(limit?: number): Promise<{ data: Notification[]; meta: { total: number } }> {
+    const query = new URLSearchParams();
+    if (limit != null) query.set('limit', String(limit));
+    const qs = query.toString();
+    return this.request<{ data: Notification[]; meta: { total: number } }>('GET', `/v1/me/notifications${qs ? `?${qs}` : ''}`);
+  }
+
+  /** Acknowledge (mark as read) notifications by IDs */
+  async ackNotifications(ids: string[]): Promise<{ acknowledged: number }> {
+    const res = await this.request<{ data: { acknowledged: number } }>('POST', '/v1/me/notifications/ack', { ids });
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Additional dispute endpoints
+  // ------------------------------------------
+
+  /** Get dispute details for a job (participants only) */
+  async getDispute(jobId: string): Promise<DisputeDetail> {
+    const res = await this.request<{ dispute: DisputeDetail }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/dispute`);
+    return res.dispute;
+  }
+
+  /** Submit refund transaction ID to complete the refund flow */
+  async submitRefundTxid(jobId: string, txid: string): Promise<{ status: string; txid: string }> {
+    return this.request<{ status: string; txid: string }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/dispute/refund-txid`, { txid });
+  }
+
+  /** Get public dispute metrics for an agent */
+  async getDisputeMetrics(verusId: string): Promise<DisputeMetrics> {
+    const res = await this.request<{ data: DisputeMetrics }>('GET', `/v1/agents/${encodeURIComponent(verusId)}/dispute-metrics`);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Review submission endpoints
+  // ------------------------------------------
+
+  /** Submit a signed review */
+  async submitReview(data: SubmitReviewData): Promise<{ id: string }> {
+    const res = await this.request<{ data: { id: string } }>('POST', '/v1/reviews', data);
+    return res.data;
+  }
+
+  /** Get the message format that needs to be signed for a review */
+  async getReviewMessage(params: { agentVerusId: string; jobHash: string; message?: string; rating?: number; timestamp?: number }): Promise<{ message: string; timestamp: number; instructions: string[] }> {
+    const query = new URLSearchParams();
+    query.set('agentVerusId', params.agentVerusId);
+    query.set('jobHash', params.jobHash);
+    if (params.message) query.set('message', params.message);
+    if (params.rating != null) query.set('rating', String(params.rating));
+    if (params.timestamp != null) query.set('timestamp', String(params.timestamp));
+    const res = await this.request<{ data: { message: string; timestamp: number; instructions: string[] } }>('GET', `/v1/reviews/message?${query}`);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Additional webhook endpoints
+  // ------------------------------------------
+
+  /** Update a webhook (partial update) */
+  async updateWebhook(webhookId: string, data: UpdateWebhookData): Promise<WebhookRegistration> {
+    const res = await this.request<{ data: WebhookRegistration }>('PATCH', `/v1/me/webhooks/${encodeURIComponent(webhookId)}`, data);
+    return res.data;
+  }
+
+  /** Test a webhook by sending a test payload */
+  async testWebhook(webhookId: string): Promise<{ success: boolean; statusCode?: number; error?: string }> {
+    const res = await this.request<{ data: { success: boolean; statusCode?: number; error?: string } }>('POST', `/v1/me/webhooks/${encodeURIComponent(webhookId)}/test`, {});
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Name resolution endpoints
+  // ------------------------------------------
+
+  /** Bulk resolve i-addresses to friendly names */
+  async resolveNames(iAddresses: string[]): Promise<Record<string, string>> {
+    const res = await this.request<{ data: Record<string, string> }>('POST', '/v1/resolve-names', { addresses: iAddresses });
+    return res.data;
+  }
 }
 
 // ------------------------------------------
@@ -1819,5 +1952,138 @@ export interface TrustHistory {
     tier: string;
     scoredAt: string;
   }>;
+}
+
+// ------------------------------------------
+// Bounty types
+// ------------------------------------------
+
+export interface Bounty {
+  id: string;
+  poster_verus_id: string;
+  title: string;
+  description: string;
+  amount: number;
+  currency: string;
+  category: string | null;
+  max_claimants: number;
+  application_deadline: string | null;
+  min_reviews: number | null;
+  min_trust_tier: string | null;
+  required_category: string | null;
+  status: 'open' | 'reviewing' | 'awarded' | 'cancelled' | 'expired';
+  signature: string;
+  created_at: string;
+  updated_at: string;
+  applications?: BountyApplication[];
+}
+
+export interface BountyApplication {
+  id: string;
+  bounty_id: string;
+  applicant_verus_id: string;
+  message: string | null;
+  selected: boolean;
+  created_at: string;
+}
+
+export interface PostBountyData {
+  title: string;
+  description: string;
+  amount: number;
+  currency?: string;
+  category?: string;
+  maxClaimants?: number;
+  applicationDeadline?: string;
+  minReviews?: number;
+  minTrustTier?: string;
+  requiredCategory?: string;
+  signature: string;
+  timestamp: number;
+}
+
+export interface BountySearchParams {
+  category?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  limit?: number;
+  offset?: number;
+}
+
+// ------------------------------------------
+// Notification types
+// ------------------------------------------
+
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  jobId?: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+// ------------------------------------------
+// Dispute detail types
+// ------------------------------------------
+
+export interface DisputeDetail {
+  jobId: string;
+  status: string;
+  reason: string;
+  filedBy: string;
+  filedAt: string;
+  response?: {
+    action: 'refund' | 'rework' | 'rejected';
+    refundPercent?: number;
+    reworkCost?: number;
+    message: string;
+    respondedAt: string;
+  };
+  refundTxid?: string | null;
+  resolvedAt?: string | null;
+}
+
+export interface DisputeMetrics {
+  verusId: string;
+  totalJobs: number;
+  totalDisputes: number;
+  disputeRate: number;
+  asAgent: {
+    total: number;
+    refunded: number;
+    reworked: number;
+    rejected: number;
+  };
+  asBuyer: {
+    total: number;
+    resolved: number;
+  };
+}
+
+// ------------------------------------------
+// Review submission types
+// ------------------------------------------
+
+export interface SubmitReviewData {
+  agentVerusId: string;
+  buyerVerusId: string;
+  jobHash: string;
+  message?: string;
+  rating?: number;
+  timestamp: number;
+  signature: string;
+}
+
+// ------------------------------------------
+// Webhook update types
+// ------------------------------------------
+
+export interface UpdateWebhookData {
+  url?: string;
+  events?: string[];
+  secret?: string;
+  status?: 'active' | 'inactive';
 }
 
