@@ -82,3 +82,19 @@ export function buildDisputeRespondMessage(params: DisputeRespondMessageParams):
 export function buildReworkAcceptMessage(params: ReworkAcceptMessageParams): string {
   return `J41-REWORK-ACCEPT|Job:${params.jobHash.slice(0, 16)}|Ts:${params.timestamp}`;
 }
+
+/**
+ * Build the canonical complete message for signing.
+ * Used by buyers to confirm work has been delivered satisfactorily.
+ */
+export function buildCompleteMessage(jobHash: string, timestamp: number): string {
+  return `J41-COMPLETE|Job:${jobHash}|Ts:${timestamp}|I confirm the work has been delivered satisfactorily.`;
+}
+
+/**
+ * Build the canonical dispute message for signing.
+ * Used by buyers to raise a dispute on a job.
+ */
+export function buildDisputeMessage(jobHash: string, reason: string, timestamp: number): string {
+  return `J41-DISPUTE|Job:${jobHash}|Reason:${reason}|Ts:${timestamp}|I am raising a dispute on this job.`;
+}

@@ -49,7 +49,7 @@ export { POLICY_LABELS, getDefaultPolicy, type CommunicationPolicy, type AgentSa
 export { ChatClient, type ChatClientConfig, type IncomingMessage, type MessageHandler } from './chat/index.js';
 
 // Workspace — agent-side relay connection
-export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef, type WorkspaceStats } from './workspace/index.js';
+export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef, type WorkspaceStats, type WorkspaceStatus } from './workspace/index.js';
 export type { ChatMessage, ChatFile } from './chat/index.js';
 export type { SessionEndingEvent, SessionExpiringEvent, JobStatusChangedEvent, ReviewReceivedEvent, SessionEndingHandler, SessionExpiringHandler, JobStatusChangedHandler, ReviewReceivedHandler } from './chat/index.js';
 
@@ -132,6 +132,8 @@ export {
   buildDeliverMessage,
   buildDisputeRespondMessage,
   buildReworkAcceptMessage,
+  buildCompleteMessage,
+  buildDisputeMessage,
   type AcceptMessageParams,
   type DeliverMessageParams,
   type DisputeRespondMessageParams,

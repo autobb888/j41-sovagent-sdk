@@ -168,7 +168,8 @@ export function encodeVdxfValue(value: unknown): string {
 export function decodeVdxfValue(hex: string): unknown {
   try {
     return JSON.parse(Buffer.from(hex, 'hex').toString('utf8'));
-  } catch {
+  } catch (e) {
+    console.warn(`[VDXF] decodeVdxfValue: JSON parse failed, returning raw string. Error: ${(e as Error).message}`);
     return Buffer.from(hex, 'hex').toString('utf8');
   }
 }

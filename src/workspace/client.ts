@@ -8,9 +8,40 @@
 
 import { io, Socket } from 'socket.io-client';
 
+/**
+ * Validate that a workspace path is safe: relative, no `..` segments, no leading `/`.
+ * Throws if invalid.
+ */
+function assertSafePath(path: string): void {
+  if (!path || typeof path !== 'string') {
+    throw new Error('Workspace path must be a non-empty string');
+  }
+  if (path.startsWith('/')) {
+    throw new Error(`Workspace path must be relative, not absolute: "${path}"`);
+  }
+  const parts = path.split(/[\\/]/);
+  if (parts.some(p => p === '..')) {
+    throw new Error(`Workspace path must not contain ".." traversal: "${path}"`);
+  }
+}
+
 export interface WorkspaceClientConfig {
   apiUrl: string;
-  sessionToken: string;
+  getSessionToken: () => string | null;
+}
+
+export interface WorkspaceStatus {
+  jobId: string;
+  status: 'pending' | 'active' | 'completed' | 'aborted';
+  agentConnected: boolean;
+  buyerConnected: boolean;
+  createdAt: string;
+  updatedAt: string;
+  stats?: {
+    filesRead: number;
+    filesWritten: number;
+    listDirectoryCalls: number;
+  };
 }
 
 export interface WorkspaceToolDef {
@@ -61,13 +92,26 @@ export class WorkspaceClient {
   async connect(jobId: string): Promise<void> {
     this._jobId = jobId;
 
-    // Step 1: Get connect token via REST
-    const tokenRes = await fetch(`${this.config.apiUrl}/v1/workspace/${jobId}/connect-token`, {
-      headers: {
-        'Cookie': `verus_session=${this.config.sessionToken}`,
-      },
-      credentials: 'include',
-    });
+    // Step 1: Get connect token via REST — use live token getter (C1 fix)
+    const tokenController = new AbortController();
+    const tokenTimer = setTimeout(() => tokenController.abort(), 15_000);
+    let tokenRes: Response;
+    try {
+      tokenRes = await fetch(`${this.config.apiUrl}/v1/workspace/${jobId}/connect-token`, {
+        headers: {
+          'Cookie': `verus_session=${this.config.getSessionToken()}`,
+        },
+        credentials: 'include',
+        signal: tokenController.signal,
+      });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        throw new Error('Workspace connect-token request timed out after 15s');
+      }
+      throw err;
+    } finally {
+      clearTimeout(tokenTimer);
+    }
 
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({}));
@@ -184,6 +228,7 @@ export class WorkspaceClient {
   // ── High-level tool methods ───────────────────────────────────
 
   async listDirectory(path: string = '.'): Promise<any[]> {
+    assertSafePath(path);
     this._stats.listDirectoryCalls++;
     const result = await this.sendToolCall('list_directory', { path });
     try {
@@ -194,14 +239,22 @@ export class WorkspaceClient {
   }
 
   async readFile(path: string): Promise<string> {
+    assertSafePath(path);
     this._stats.filesRead++;
     const result = await this.sendToolCall('read_file', { path });
+    if (!result?.content?.[0]?.text) {
+      throw new Error(`readFile: unexpected MCP result format for path "${path}"`);
+    }
     return result.content[0].text;
   }
 
   async writeFile(path: string, content: string): Promise<string> {
+    assertSafePath(path);
     this._stats.filesWritten++;
     const result = await this.sendToolCall('write_file', { path, content });
+    if (!result?.content?.[0]?.text) {
+      throw new Error(`writeFile: unexpected MCP result format for path "${path}"`);
+    }
     return result.content[0].text;
   }
 

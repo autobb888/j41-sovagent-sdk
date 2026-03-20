@@ -81,6 +81,8 @@ export class ChatClient {
   private reviewReceivedHandler: ReviewReceivedHandler | null = null;
   /** Callback invoked when auto-reconnect fails permanently (S4) */
   onReconnectFailed: ((error: Error) => void) | null = null;
+  private _reconnectCycles = 0;
+  private readonly MAX_RECONNECT_CYCLES = 3;
 
   constructor(config: ChatClientConfig) {
     this.config = config;
@@ -155,6 +157,7 @@ export class ChatClient {
       }, 10000);
 
       this.socket.on('connect', () => {
+        this._reconnectCycles = 0; // Reset on successful connect
         if (!resolved) {
           resolved = true;
           clearTimeout(timeoutId);
@@ -204,10 +207,20 @@ export class ChatClient {
       });
 
       this.socket.on('reconnect_failed', () => {
-        console.error('[CHAT] All reconnection attempts failed — getting fresh token...');
+        this._reconnectCycles++;
+        if (this._reconnectCycles > this.MAX_RECONNECT_CYCLES) {
+          const err = new Error(
+            `[CHAT] Reconnect limit reached (${this.MAX_RECONNECT_CYCLES} cycles) — giving up`
+          );
+          console.error(err.message);
+          if (this.onReconnectFailed) {
+            this.onReconnectFailed(err);
+          }
+          return;
+        }
+        console.error(`[CHAT] All reconnection attempts failed — getting fresh token (cycle ${this._reconnectCycles}/${this.MAX_RECONNECT_CYCLES})...`);
         this.connect().catch((err) => {
           console.error('[CHAT] Auto-reconnect failed:', err.message);
-          // S4: Surface failure via callback so J41Agent can handle it
           if (this.onReconnectFailed) {
             this.onReconnectFailed(err);
           }

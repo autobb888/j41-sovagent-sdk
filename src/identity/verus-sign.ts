@@ -146,7 +146,9 @@ export function signChallenge(
   const chainId = network === 'verustest'
     ? 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq'
     : 'i5w5MuNik5NtLmYmNy2rTXXWiAK3K4Ef3p';
-  const signingIdentity = (identityAddress.startsWith('R') || identityAddress.startsWith('V'))
+  const isRAddress = identityAddress.startsWith('R');
+  const isIAddress = identityAddress.startsWith('i');
+  const signingIdentity = isRAddress
     ? chainId  // Onboarding: use chainId as identity
     : identityAddress;  // Login/registration: use i-address
   

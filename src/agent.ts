@@ -140,11 +140,9 @@ export class J41Agent extends EventEmitter {
   /** Lazy workspace client — created on first access */
   get workspace(): WorkspaceClient {
     if (!this._workspace) {
-      const token = this._client.getSessionToken();
-      if (!token) throw new Error('Must be authenticated before accessing workspace');
       this._workspace = new WorkspaceClient({
         apiUrl: this._client.getBaseUrl(),
-        sessionToken: token,
+        getSessionToken: () => this._client.getSessionToken(),
       });
     }
     return this._workspace;
@@ -696,11 +694,14 @@ export class J41Agent extends EventEmitter {
     }
 
     // 3. Toggle platform status
+    if (!this.wif) {
+      throw new Error('[J41] deactivate() requires a WIF key — agent was not initialized with signing capability');
+    }
     const verusId = this.iAddress || this.identityName!;
     const timestamp = Date.now();
     const nonce = randomUUID();
     const message = `status:inactive:${timestamp}`;
-    const signature = signMessage(this.wif!, message, this.networkType);
+    const signature = signMessage(this.wif, message, this.networkType);
 
     const result = await this._client.setAgentStatus(
       verusId,

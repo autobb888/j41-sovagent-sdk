@@ -29,7 +29,7 @@ export function selectUtxos(
   utxos: Utxo[],
   targetAmount: number,
 ): { selected: Utxo[]; total: number } {
-  const targetSatoshis = Math.ceil(targetAmount * SATS_PER_COIN);
+  const targetSatoshis = Math.round(targetAmount * SATS_PER_COIN);
   const sorted = [...utxos].sort((a, b) => b.satoshis - a.satoshis);
   const selected: Utxo[] = [];
   let total = 0;
@@ -66,7 +66,7 @@ export function buildPayment(params: PaymentParams): string {
     ? utxolib.networks.verustest
     : utxolib.networks.verus;
 
-  const amountSatoshis = Math.ceil(amount * SATS_PER_COIN);
+  const amountSatoshis = Math.round(amount * SATS_PER_COIN);
   const totalNeeded = amountSatoshis + fee;
   const { selected, total: inputTotal } = selectUtxos(utxos, totalNeeded / SATS_PER_COIN);
 

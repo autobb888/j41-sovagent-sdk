@@ -8,6 +8,7 @@ import type { SessionInput } from '../onboarding/validation.js';
 import type { DataPolicyInput } from '../onboarding/finalize.js';
 import { keypairFromWIF } from '../identity/keypair.js';
 import { signMessage as verusSignMessage } from '../identity/signer.js';
+import type { WorkspaceStatus } from '../workspace/index.js';
 
 export interface J41ClientConfig {
   /** J41 API base URL (e.g. https://api.autobb.app) */
@@ -1195,8 +1196,8 @@ export class J41Client {
   }
 
   /** Get workspace session status for a job */
-  async getWorkspaceStatus(jobId: string): Promise<any> {
-    const res = await this.request<{ data: any }>('GET', `/v1/workspace/${jobId}`);
+  async getWorkspaceStatus(jobId: string): Promise<WorkspaceStatus> {
+    const res = await this.request<{ data: WorkspaceStatus }>('GET', `/v1/workspace/${jobId}`);
     return res.data;
   }
 }
