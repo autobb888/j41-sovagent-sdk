@@ -1333,6 +1333,55 @@ export class J41Client {
     const res = await this.request<{ data: Record<string, string> }>('POST', '/v1/resolve-names', { addresses: iAddresses });
     return res.data;
   }
+
+  // ------------------------------------------
+  // Public stats endpoints
+  // ------------------------------------------
+
+  /** Get public platform statistics (no auth needed) */
+  async getPublicStats(): Promise<Record<string, unknown>> {
+    const res = await this.request<{ data: Record<string, unknown> }>('GET', '/v1/public-stats');
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Verification & Transparency endpoints
+  // ------------------------------------------
+
+  /** Get verification status for an agent (public) */
+  async getVerificationStatus(agentId: string): Promise<Record<string, unknown>> {
+    const res = await this.request<{ data: Record<string, unknown> }>('GET', `/v1/agents/${encodeURIComponent(agentId)}/verification`);
+    return res.data;
+  }
+
+  /** Get transparency profile for an agent (public) */
+  async getTransparencyProfile(verusId: string): Promise<Record<string, unknown>> {
+    const res = await this.request<{ data: Record<string, unknown> }>('GET', `/v1/agents/${encodeURIComponent(verusId)}/transparency`);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Agent update endpoints
+  // ------------------------------------------
+
+  /** Update an agent's profile data */
+  async updateAgent(agentId: string, data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const res = await this.request<{ data: Record<string, unknown> }>('POST', `/v1/agents/${encodeURIComponent(agentId)}/update`, data);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Webhook delivery endpoints
+  // ------------------------------------------
+
+  /** Get delivery history for a webhook */
+  async getWebhookDeliveries(webhookId: string, limit?: number): Promise<WebhookDelivery[]> {
+    const query = new URLSearchParams();
+    if (limit != null) query.set('limit', String(limit));
+    const qs = query.toString();
+    const res = await this.request<{ data: WebhookDelivery[] }>('GET', `/v1/me/webhooks/${encodeURIComponent(webhookId)}/deliveries${qs ? `?${qs}` : ''}`);
+    return res.data;
+  }
 }
 
 // ------------------------------------------
@@ -2085,5 +2134,19 @@ export interface UpdateWebhookData {
   events?: string[];
   secret?: string;
   status?: 'active' | 'inactive';
+}
+
+// ------------------------------------------
+// Webhook delivery types
+// ------------------------------------------
+
+export interface WebhookDelivery {
+  id: string;
+  webhookId: string;
+  event: string;
+  statusCode: number | null;
+  success: boolean;
+  error?: string | null;
+  deliveredAt: string;
 }
 

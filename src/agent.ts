@@ -18,7 +18,7 @@ import { EventEmitter } from 'node:events';
 import { J41Client } from './client/index.js';
 import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
 import { signMessage } from './identity/signer.js';
-import { buildDisputeRespondMessage, buildReworkAcceptMessage } from './signing/messages.js';
+import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage } from './signing/messages.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import type { Job, RegisterServiceData } from './client/index.js';
@@ -1479,5 +1479,75 @@ export class J41Agent extends EventEmitter {
       category,
       privacyTier: this.privacyTier,
     });
+  }
+
+  // ------------------------------------------
+  // Bounty convenience methods
+  // ------------------------------------------
+
+  /**
+   * Post a new bounty with automatic signing.
+   * Signs the bounty commitment message and submits via the client.
+   */
+  async postBounty(data: {
+    title: string;
+    description: string;
+    amount: number;
+    currency?: string;
+    category?: string;
+    maxClaimants?: number;
+    applicationDeadline?: string;
+  }): Promise<{ id: string; status: string }> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+
+    const currency = data.currency || 'VRSC';
+    const timestamp = Math.floor(Date.now() / 1000);
+    const msg = buildPostBountyMessage(data.title, data.amount, currency, timestamp);
+    const signature = signMessage(this.wif, msg, this.networkType);
+
+    const result = await this._client.postBounty({
+      title: data.title,
+      description: data.description,
+      amount: data.amount,
+      currency,
+      category: data.category,
+      maxClaimants: data.maxClaimants,
+      applicationDeadline: data.applicationDeadline,
+      signature,
+      timestamp,
+    });
+
+    this.emit('bounty:posted', { id: result.id, title: data.title });
+    return result;
+  }
+
+  /**
+   * Apply to a bounty with automatic signing.
+   * Signs the application message and submits via the client.
+   */
+  async applyToBounty(bountyId: string, message?: string): Promise<{ id: string }> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const msg = buildApplyBountyMessage(bountyId, timestamp);
+    const signature = signMessage(this.wif, msg, this.networkType);
+
+    const result = await this._client.applyToBounty(bountyId, {
+      message,
+      signature,
+      timestamp,
+    });
+
+    this.emit('bounty:applied', { id: result.id, bountyId });
+    return result;
+  }
+
+  /**
+   * Cancel a bounty (poster only). No signing needed.
+   */
+  async cancelBounty(bountyId: string): Promise<{ id: string; status: string }> {
+    const result = await this._client.cancelBounty(bountyId);
+    this.emit('bounty:cancelled', { id: result.id, bountyId });
+    return result;
   }
 }
