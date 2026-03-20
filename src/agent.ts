@@ -1552,4 +1552,117 @@ export class J41Agent extends EventEmitter {
     this.emit('bounty:cancelled', { id: result.id, bountyId });
     return result;
   }
+
+  // ------------------------------------------
+  // Hiring (agent-to-agent or agent-as-buyer)
+  // ------------------------------------------
+
+  /**
+   * Hire another agent by creating a job.
+   * Fetches the canonical signing message from the platform, signs it, and submits.
+   *
+   * @param data - Job details (sellerVerusId, description, amount, etc.)
+   * @returns The created Job object
+   */
+  async createJob(data: {
+    sellerVerusId: string;
+    description: string;
+    amount: number;
+    currency?: string;
+    serviceId?: string;
+    deadline?: string;
+    paymentTerms?: 'prepay' | 'postpay' | 'split';
+    paymentAddress?: string;
+    dataTerms?: {
+      retention?: 'none' | 'job-duration' | '30-days';
+      allowTraining?: boolean;
+      allowThirdParty?: boolean;
+      requireDeletionAttestation?: boolean;
+    };
+    sovguardEnabled?: boolean;
+    privateMode?: boolean;
+  }): Promise<Job> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    await this.login();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    // Get canonical message from platform
+    const { message } = await this._client.getJobRequestMessage({
+      sellerVerusId: data.sellerVerusId,
+      description: data.description,
+      amount: data.amount,
+      currency: data.currency,
+      deadline: data.deadline,
+      timestamp,
+      sovguardEnabled: data.sovguardEnabled,
+    });
+
+    const signature = signMessage(this.wif, message, this.networkType);
+
+    const job = await this._client.createJob({
+      ...data,
+      currency: data.currency || 'VRSCTEST',
+      timestamp,
+      signature,
+    });
+
+    this.emit('job:created', { id: job.id, seller: data.sellerVerusId });
+    return job;
+  }
+
+  // ------------------------------------------
+  // Payments (on-chain VRSC transfers)
+  // ------------------------------------------
+
+  /**
+   * Send VRSC/VRSCTEST to an address or VerusID.
+   * Builds, signs, and broadcasts the transaction.
+   *
+   * @param to - Destination R-address, i-address, or VerusID (e.g., "alice@")
+   * @param amount - Amount in VRSC (not satoshis)
+   * @returns Transaction ID
+   */
+  async sendCurrency(to: string, amount: number): Promise<string> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    await this.login();
+
+    // Resolve VerusID to i-address if needed
+    let toAddress = to;
+    if (to.includes('@') || to.includes('.')) {
+      // Looks like a VerusID — resolve via platform
+      try {
+        const payInfo = await this._client.getAgentPaymentAddress(to);
+        toAddress = payInfo.address || to;
+      } catch {
+        // If resolution fails, try using it as-is (might be a raw address)
+        toAddress = to;
+      }
+    }
+
+    // Get UTXOs
+    const utxoResp = await this._client.getUtxos();
+    const utxos = utxoResp.utxos || utxoResp;
+
+    if (!utxos || !Array.isArray(utxos) || utxos.length === 0) {
+      throw new Error('No UTXOs available — wallet is empty');
+    }
+
+    // Build and sign transaction
+    const { buildPayment } = await import('./tx/payment.js');
+    const rawhex = buildPayment({
+      wif: this.wif,
+      toAddress,
+      amount,
+      utxos,
+      network: this.networkType,
+    });
+
+    // Broadcast
+    const result = await this._client.broadcast(rawhex);
+    const txid = typeof result === 'string' ? result : result.txid || JSON.stringify(result);
+
+    this.emit('payment:sent', { txid, to: toAddress, amount });
+    return txid;
+  }
 }
