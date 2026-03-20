@@ -1382,6 +1382,124 @@ export class J41Client {
     const res = await this.request<{ data: WebhookDelivery[] }>('GET', `/v1/me/webhooks/${encodeURIComponent(webhookId)}/deliveries${qs ? `?${qs}` : ''}`);
     return res.data;
   }
+
+  // ------------------------------------------
+  // Delivery rejection endpoints
+  // ------------------------------------------
+
+  /** Reject a job delivery with a reason (buyer only) */
+  async rejectDelivery(jobId: string, reason: string): Promise<Job> {
+    const res = await this.request<{ data: Job }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/reject-delivery`, { reason });
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Combined payment endpoint
+  // ------------------------------------------
+
+  /** Record a single combined payment txid (agent + fee in one tx) */
+  async recordPaymentCombined(jobId: string, txid: string): Promise<{ data: Job; meta: { verificationNote: string } }> {
+    const res = await this.request<{ data: Job; meta: { verificationNote: string } }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/payment-combined`, { txid });
+    return res;
+  }
+
+  // ------------------------------------------
+  // Featured & Trending service endpoints
+  // ------------------------------------------
+
+  /** Get featured services (public) */
+  async getFeaturedServices(): Promise<{ data: Service[] }> {
+    return this.request<{ data: Service[] }>('GET', '/v1/services/featured');
+  }
+
+  /** Get trending services (public) */
+  async getTrendingServices(): Promise<{ data: Service[] }> {
+    return this.request<{ data: Service[] }>('GET', '/v1/services/trending');
+  }
+
+  // ------------------------------------------
+  // Identity endpoints
+  // ------------------------------------------
+
+  /** Get my on-chain identity data (authenticated) */
+  async getMyIdentity(): Promise<Record<string, unknown>> {
+    const res = await this.request<{ data: Record<string, unknown> }>('GET', '/v1/me/identity');
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Onboard retry endpoint
+  // ------------------------------------------
+
+  /** Retry a failed onboarding attempt */
+  async retryOnboard(onboardId: string): Promise<OnboardStatus> {
+    return this.request<OnboardStatus>('POST', `/v1/onboard/retry/${encodeURIComponent(onboardId)}`);
+  }
+
+  // ------------------------------------------
+  // Balance endpoint
+  // ------------------------------------------
+
+  /** Get the authenticated agent's on-chain balance */
+  async getBalance(): Promise<BalanceResponse> {
+    const res = await this.request<{ data: BalanceResponse }>('GET', '/v1/me/balance');
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Agent payment address endpoint
+  // ------------------------------------------
+
+  /** Get the payment address for an agent (public) */
+  async getAgentPaymentAddress(verusId: string): Promise<PaymentAddressResponse> {
+    const res = await this.request<{ data: PaymentAddressResponse }>('GET', `/v1/agents/${encodeURIComponent(verusId)}/payment-address`);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Payment verification endpoint
+  // ------------------------------------------
+
+  /** Verify a payment transaction on-chain */
+  async verifyPayment(params: { txid: string; expectedAddress: string; expectedAmount: number; currency: string }): Promise<VerifyPaymentResponse> {
+    const query = new URLSearchParams();
+    query.set('txid', params.txid);
+    query.set('expectedAddress', params.expectedAddress);
+    query.set('expectedAmount', String(params.expectedAmount));
+    query.set('currency', params.currency);
+    const res = await this.request<{ data: VerifyPaymentResponse }>('GET', `/v1/tx/verify-payment?${query}`);
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Currency endpoints
+  // ------------------------------------------
+
+  /** Get supported currencies (public) */
+  async getCurrencies(): Promise<CurrencyInfo[]> {
+    const res = await this.request<{ data: CurrencyInfo[] }>('GET', '/v1/currencies');
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Earnings endpoint
+  // ------------------------------------------
+
+  /** Get my earnings summary (authenticated) */
+  async getMyEarnings(): Promise<EarningsResponse> {
+    const res = await this.request<{ data: EarningsResponse }>('GET', '/v1/me/earnings');
+    return res.data;
+  }
+
+  // ------------------------------------------
+  // Agent name check endpoint
+  // ------------------------------------------
+
+  /** Check if an agent name is available (public) */
+  async checkAgentName(name: string): Promise<NameCheckResponse> {
+    const res = await this.request<{ data: NameCheckResponse }>('GET', `/v1/agents/check-name/${encodeURIComponent(name)}`);
+    return res.data;
+  }
 }
 
 // ------------------------------------------
@@ -2148,5 +2266,70 @@ export interface WebhookDelivery {
   lastError: string | null;
   createdAt: string;
   deliveredAt: string | null;
+}
+
+// ------------------------------------------
+// Balance types
+// ------------------------------------------
+
+export interface BalanceResponse {
+  address: string;
+  balance: number;
+  currency: string;
+}
+
+// ------------------------------------------
+// Payment address types
+// ------------------------------------------
+
+export interface PaymentAddressResponse {
+  verusId: string;
+  address: string;
+}
+
+// ------------------------------------------
+// Payment verification types
+// ------------------------------------------
+
+export interface VerifyPaymentResponse {
+  txid: string;
+  verified: boolean;
+  confirmations: number;
+  amount: number;
+  address: string;
+  currency: string;
+}
+
+// ------------------------------------------
+// Currency types
+// ------------------------------------------
+
+export interface CurrencyInfo {
+  id: string;
+  name: string;
+  symbol: string;
+  currencyId?: string;
+  isToken?: boolean;
+}
+
+// ------------------------------------------
+// Earnings types
+// ------------------------------------------
+
+export interface EarningsResponse {
+  total: number;
+  currency: string;
+  completedJobs: number;
+  pendingEarnings: number;
+}
+
+// ------------------------------------------
+// Name check types
+// ------------------------------------------
+
+export interface NameCheckResponse {
+  name: string;
+  available: boolean;
+  reason?: string;
 }
 
