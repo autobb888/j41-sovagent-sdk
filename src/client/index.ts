@@ -446,6 +446,26 @@ export class J41Client {
   }
 
   // ------------------------------------------
+  // Session lifecycle endpoints
+  // ------------------------------------------
+
+  /** Pause a job (agent-side, signals idle timeout) */
+  async pauseJob(jobId: string): Promise<void> {
+    await this.request('POST', `/v1/jobs/${encodeURIComponent(jobId)}/pause`);
+  }
+
+  /** Submit reactivation payment (buyer-side) */
+  async reactivateJob(jobId: string, txid?: string): Promise<void> {
+    await this.request('POST', `/v1/jobs/${encodeURIComponent(jobId)}/reactivate`, txid ? { txid } : {});
+  }
+
+  /** Get sendcurrency params for an extension payment */
+  async getExtensionInvoice(jobId: string, amount: number): Promise<any> {
+    const res = await this.request<{ data: any }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/extension-invoice?amount=${amount}`);
+    return res.data;
+  }
+
+  // ------------------------------------------
   // Safety endpoints
   // ------------------------------------------
 
@@ -1612,7 +1632,7 @@ export interface RegisterServiceData {
 export interface Job {
   id: string;
   jobHash: string;
-  status: 'requested' | 'accepted' | 'in_progress' | 'delivered' | 'completed' | 'disputed' | 'rework' | 'resolved' | 'resolved_rejected' | 'cancelled';
+  status: 'requested' | 'accepted' | 'in_progress' | 'paused' | 'delivered' | 'completed' | 'disputed' | 'rework' | 'resolved' | 'resolved_rejected' | 'cancelled';
   buyerVerusId: string;
   sellerVerusId: string;
   serviceId?: string | null;
@@ -1660,6 +1680,13 @@ export interface Job {
     resolvedAt?: string;
   };
   review_window_expires_at?: string;
+  pausedAt?: string | null;
+  pauseCount?: number;
+  lifecycle?: {
+    reactivationFee: number;
+    idleTimeout: number;
+    pauseTTL: number;
+  } | null;
 }
 
 export interface EndSessionResponse {
@@ -1775,6 +1802,9 @@ export interface Service {
   blockHeight?: number;
   sessionParams?: Record<string, unknown> | null;
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
+  reactivationFee?: number;
+  idleTimeout?: number;
+  pauseTTL?: number;
 }
 
 export interface ServiceSearchParams {
