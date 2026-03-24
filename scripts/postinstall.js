@@ -37,3 +37,57 @@ if (!existsSync(target)) {
   writeFileSync(target, JSON.stringify(evals, null, 2) + '\n');
   console.log('✓ Patched bitcoin-ops/evals.json');
 }
+
+// ── Patch verus-typescript-primitives VdxfUniValue ──
+// The library throws on unknown VDXF keys in contentmultimap.
+// agentplatform:: keys (agent.models, agent.services, etc.) are not in the
+// hardcoded registry. This patch treats unknown keys as DataDescriptor
+// objects (opaque passthrough) instead of throwing.
+const { readFileSync } = require('fs');
+const vdxfPath = join(__dirname, '..', 'node_modules', 'verus-typescript-primitives', 'dist', 'pbaas', 'VdxfUniValue.js');
+
+if (existsSync(vdxfPath)) {
+  let src = readFileSync(vdxfPath, 'utf-8');
+  let patched = false;
+
+  // Patch 1: getByteLength — throw → DataDescriptor fallback
+  const throw1 = 'throw new Error("contentmap invalid or unrecognized vdxfkey for object type: " + key);';
+  const fix1 = `// J41 patch: treat unknown VDXF keys as DataDescriptor (opaque passthrough)
+                const descr = new DataDescriptor_1.DataDescriptor(value);
+                length += varint_1.default.encodingLength(descr.version);
+                length += totalStreamLength(descr.getByteLength());`;
+  const fix1b = `// J41 patch: treat unknown VDXF keys as DataDescriptor (opaque passthrough)
+                const descr = new DataDescriptor_1.DataDescriptor(value);
+                writer.writeSlice((0, address_1.fromBase58Check)(key).hash);
+                writer.writeVarInt(descr.version);
+                writer.writeCompactSize(descr.getByteLength());
+                writer.writeSlice(descr.toBuffer());`;
+
+  // Patch 3: fromJson — throw → DataDescriptor fallback
+  const throw3 = 'throw new Error("Unknown vdxfkey: " + oneValValues[k]);';
+  const fix3 = `// J41 patch: treat unknown VDXF keys as DataDescriptor (opaque passthrough)
+                    const descriptor = DataDescriptor_1.DataDescriptor.fromJson(oneValValues[k]);
+                    arrayItem.push({ [objTypeKey]: descriptor });`;
+
+  // Apply patches (replace first occurrence of throw1 with fix1, second with fix1b)
+  if (src.includes(throw1)) {
+    // First occurrence is in getByteLength
+    const idx1 = src.indexOf(throw1);
+    src = src.substring(0, idx1) + fix1 + src.substring(idx1 + throw1.length);
+    // Second occurrence is in toBuffer
+    const idx2 = src.indexOf(throw1);
+    if (idx2 >= 0) {
+      src = src.substring(0, idx2) + fix1b + src.substring(idx2 + throw1.length);
+    }
+    patched = true;
+  }
+  if (src.includes(throw3)) {
+    src = src.replace(throw3, fix3);
+    patched = true;
+  }
+
+  if (patched) {
+    writeFileSync(vdxfPath, src);
+    console.log('✓ Patched verus-typescript-primitives VdxfUniValue (unknown VDXF key passthrough)');
+  }
+}
