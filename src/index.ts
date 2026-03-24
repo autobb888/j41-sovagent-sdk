@@ -40,6 +40,9 @@ export { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypai
 // Message signing
 export { signMessage, signChallenge } from './identity/signer.js';
 
+// LoginConsent authentication
+export { loginWithConsent, type LoginConsentResult } from './auth/login-consent.js';
+
 // Identity update (offline tx building)
 export { buildIdentityUpdateTx, type IdentityUpdateParams } from './identity/update.js';
 
