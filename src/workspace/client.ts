@@ -6,6 +6,7 @@
  * and receives results from the buyer's CLI.
  */
 
+import { randomBytes } from 'crypto';
 import { io, Socket } from 'socket.io-client';
 
 /**
@@ -96,7 +97,6 @@ export interface WorkspaceStats {
 export class WorkspaceClient {
   private config: WorkspaceClientConfig;
   private socket: Socket | null = null;
-  private requestId = 0;
   private pendingRequests = new Map<string, {
     resolve: (result: any) => void;
     reject: (error: Error) => void;
@@ -273,7 +273,7 @@ export class WorkspaceClient {
       throw new Error('Workspace not connected');
     }
 
-    const id = `ws-${++this.requestId}`;
+    const id = `ws-${randomBytes(8).toString('hex')}`;
 
     return new Promise((resolve, reject) => {
       // No timeout on writes — buyer reviews + approves in supervised mode
