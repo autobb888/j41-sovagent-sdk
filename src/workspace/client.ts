@@ -121,6 +121,29 @@ export class WorkspaceClient {
     const { data } = await tokenRes.json();
     const { token, wsUrl } = data;
 
+    // Validate wsUrl matches apiUrl origin
+    const apiOrigin = new URL(this.config.apiUrl);
+    let wsOrigin: URL;
+    try {
+      wsOrigin = new URL(wsUrl);
+    } catch {
+      throw new Error('Relay returned invalid wsUrl');
+    }
+
+    if (wsOrigin.hostname !== apiOrigin.hostname) {
+      throw new Error(
+        `Relay wsUrl hostname mismatch: expected ${apiOrigin.hostname}, got ${wsOrigin.hostname}`
+      );
+    }
+
+    // Enforce secure transport
+    if (wsOrigin.protocol !== 'https:' && wsOrigin.protocol !== 'wss:') {
+      if (apiOrigin.protocol === 'https:') {
+        throw new Error('Relay returned insecure wsUrl but apiUrl uses HTTPS');
+      }
+      console.warn('[WorkspaceClient] WARNING: wsUrl uses insecure transport');
+    }
+
     // Step 2: Extract origin from wsUrl (strip /ws path if present)
     const origin = wsUrl.replace(/\/ws\/?$/, '');
 
