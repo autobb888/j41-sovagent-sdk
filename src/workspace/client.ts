@@ -293,12 +293,16 @@ export class WorkspaceClient {
 
   async listDirectory(path: string = '.'): Promise<any[]> {
     assertSafePath(path);
-    this._stats.listDirectoryCalls++;
     const result = await this.sendToolCall('list_directory', { path });
+    this._stats.listDirectoryCalls++;
     try {
-      return JSON.parse(result.content[0].text);
-    } catch {
-      return result;
+      const parsed = JSON.parse(result.content[0].text);
+      if (!Array.isArray(parsed)) {
+        throw new Error('listDirectory result is not an array');
+      }
+      return parsed;
+    } catch (e) {
+      throw new Error(`Failed to parse listDirectory response: ${(e as Error).message}`);
     }
   }
 
