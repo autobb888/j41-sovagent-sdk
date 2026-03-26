@@ -25,6 +25,39 @@ function assertSafePath(path: string): void {
   }
 }
 
+const MAX_RESULT_SIZE = 10 * 1024 * 1024; // 10MB
+
+interface McpResultContent {
+  type: string;
+  text: string;
+}
+
+interface McpResultPayload {
+  content: McpResultContent[];
+}
+
+function validateMcpResult(data: any): {
+  id: string;
+  success: boolean;
+  result?: McpResultPayload;
+  error?: string;
+} | null {
+  if (!data || typeof data.id !== 'string') return null;
+  if (typeof data.success !== 'boolean') return null;
+
+  if (data.success) {
+    if (!data.result || !Array.isArray(data.result.content)) return null;
+    for (const item of data.result.content) {
+      if (typeof item?.type !== 'string' || typeof item?.text !== 'string') return null;
+      if (item.text.length > MAX_RESULT_SIZE) return null;
+    }
+  } else {
+    if (data.error !== undefined && typeof data.error !== 'string') return null;
+  }
+
+  return data;
+}
+
 export interface WorkspaceClientConfig {
   apiUrl: string;
   getSessionToken: () => string | null;
@@ -175,14 +208,20 @@ export class WorkspaceClient {
 
       // MCP results from buyer's CLI
       this.socket.on('mcp:result', (data: any) => {
-        const pending = this.pendingRequests.get(data.id);
+        const validated = validateMcpResult(data);
+        if (!validated) {
+          console.warn('[WorkspaceClient] Received invalid mcp:result, ignoring');
+          return;
+        }
+
+        const pending = this.pendingRequests.get(validated.id);
         if (pending) {
           clearTimeout(pending.timeout);
-          this.pendingRequests.delete(data.id);
-          if (data.success) {
-            pending.resolve(data.result);
+          this.pendingRequests.delete(validated.id);
+          if (validated.success) {
+            pending.resolve(validated.result);
           } else {
-            pending.reject(new Error(data.error || 'Tool call failed'));
+            pending.reject(new Error(validated.error || 'Tool call failed'));
           }
         }
       });
