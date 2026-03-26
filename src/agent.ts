@@ -912,6 +912,17 @@ export class J41Agent extends EventEmitter {
       }
     });
 
+    // Budget request events
+    this.chatClient.on('budget_approved', (data: any) => {
+      this.emit('budget:approved', data);
+    });
+    this.chatClient.on('budget_declined', (data: any) => {
+      this.emit('budget:declined', data);
+    });
+    this.chatClient.on('budget_added', (data: any) => {
+      this.emit('budget:added', data);
+    });
+
     // Handle review notifications — auto-accept and update identity on-chain
     this.chatClient.onReviewReceived(async (event: ReviewReceivedEvent) => {
       this.emit('review:received', event);
@@ -1243,6 +1254,20 @@ export class J41Agent extends EventEmitter {
 
     this.emit('rework:accepted', { jobId });
     return result;
+  }
+
+  /**
+   * Request additional budget for a job.
+   * The other party receives a budget_request event and can approve/decline.
+   */
+  async requestBudget(jobId: string, params: {
+    amount: number;
+    currency?: string;
+    reason?: string;
+    breakdown?: string;
+  }): Promise<{ id: string; status: string }> {
+    const res = await this._client.post(`/v1/jobs/${jobId}/budget-request`, params);
+    return res;
   }
 
   /**
