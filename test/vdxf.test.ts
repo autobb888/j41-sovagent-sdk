@@ -20,18 +20,18 @@ const DD = DATA_DESCRIPTOR_KEY;
 // ─── 1. VDXF Schema ─────────────────────────────────────────────────
 
 describe('VDXF Schema', () => {
-  it('has exactly 18 keys', () => {
-    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 18);
+  it('has exactly 19 keys', () => {
+    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 19);
   });
 
   it('has 8 parent keys', () => {
     assert.strictEqual(Object.keys(PARENT_KEYS).length, 8);
   });
 
-  it('agent has 8 keys (displayName, type, description, status, owner, services, network, profile)', () => {
+  it('agent has 9 keys (displayName, type, description, status, owner, services, network, profile, models)', () => {
     const keys = Object.keys(VDXF_KEYS.agent);
-    assert.strictEqual(keys.length, 8);
-    for (const k of ['displayName', 'type', 'description', 'status', 'owner', 'services', 'network', 'profile']) {
+    assert.strictEqual(keys.length, 9);
+    for (const k of ['displayName', 'type', 'description', 'status', 'owner', 'services', 'network', 'profile', 'models']) {
       assert.ok(VDXF_KEYS.agent[k], `agent.${k} must be defined`);
     }
   });

@@ -214,10 +214,12 @@ export class WorkspaceClient {
     const id = `ws-${++this.requestId}`;
 
     return new Promise((resolve, reject) => {
+      // No timeout on writes — buyer reviews + approves in supervised mode
+      const timeoutMs = tool === 'write_file' ? 0 : 30_000;
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`Tool call timeout: ${tool}`));
-      }, 30_000);
+      }, timeoutMs || 2_147_483_647); // ~24 days = effectively no timeout for writes
 
       this.pendingRequests.set(id, { resolve, reject, timeout });
 

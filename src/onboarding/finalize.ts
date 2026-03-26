@@ -127,6 +127,8 @@ export interface AgentProfileInput {
   platformConfig?: PlatformConfigInput;
   /** Workspace capability declaration → workspace.capability */
   workspaceCapability?: WorkspaceCapabilityInput;
+  /** LLM models used by this agent → agent.models (JSON array of strings) */
+  models?: string[];
 }
 
 export interface ServiceInput {
