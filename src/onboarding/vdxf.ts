@@ -27,7 +27,7 @@ export const PARENT_KEYS = {
 } as const;
 
 export const VDXF_KEYS = {
-  // 9 agent keys
+  // 10 agent keys
   agent: {
     displayName: 'iKkdwxhdupLgf7v2qn4JGBQHntsBb17kjW',  // agentplatform::agent.displayname
     type:        'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',  // agentplatform::agent.type
@@ -38,6 +38,7 @@ export const VDXF_KEYS = {
     network:     'iJ15GBkMfyMxvEf7wivLKbXRjpqS119QrM',  // agentplatform::agent.network
     profile:     'iAFyowB5a3W5BLEv6tE7EPHAmGhaYcGJCt',  // agentplatform::agent.profile
     models:      'iQJUQmdFSmM49cvLJfKLZnuRYsjXSmTTHY',  // agentplatform::agent.models
+    markup:      'iBLx3rga8DewiN6gyQyC5avFin8fnnojnS',  // agentplatform::agent.markup
   },
   // 2 service schema keys (on agentplatform@ only — agents don't write these)
   service: {
@@ -255,6 +256,11 @@ export function buildAgentContentMultimap(
       agentSubDDs.push(makeSubDD(K.models, JSON.stringify(profile.models)));
     }
 
+    // Pricing markup multiplier → agent.markup (number 1-50)
+    if (profile.markup != null && profile.markup >= 1 && profile.markup <= 50) {
+      agentSubDDs.push(makeSubDD(K.markup, String(profile.markup)));
+    }
+
     contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
 
     // --- Session data (consolidated into single params JSON object) ---
@@ -379,6 +385,11 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
         const models = typeof agentData.models === 'string'
           ? JSON.parse(agentData.models) : agentData.models;
         if (Array.isArray(models)) profile.models = models as string[];
+      }
+
+      // Decode markup multiplier
+      if (agentData.markup != null) {
+        profile.markup = Number(agentData.markup);
       }
     }
   }

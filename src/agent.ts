@@ -1273,8 +1273,7 @@ export class J41Agent extends EventEmitter {
     reason?: string;
     breakdown?: string;
   }): Promise<{ id: string; status: string }> {
-    const res = await this._client.post(`/v1/jobs/${jobId}/budget-request`, params);
-    return res;
+    return this._client.requestBudget(jobId, params);
   }
 
   /**

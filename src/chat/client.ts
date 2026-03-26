@@ -84,8 +84,18 @@ export class ChatClient {
   private _reconnectCycles = 0;
   private readonly MAX_RECONNECT_CYCLES = 3;
 
+  private genericHandlers = new Map<string, Array<(data: unknown) => void>>();
+
   constructor(config: ChatClientConfig) {
     this.config = config;
+  }
+
+  /** Register a generic event handler (for platform events like budget_approved, budget_declined) */
+  on(event: string, handler: (data: unknown) => void): void {
+    if (!this.genericHandlers.has(event)) this.genericHandlers.set(event, []);
+    this.genericHandlers.get(event)!.push(handler);
+    // If socket is already connected, register immediately
+    if (this.socket) this.socket.on(event, handler);
   }
 
   /**
@@ -168,6 +178,13 @@ export class ChatClient {
           resolve();
         }
       });
+
+      // Register any generic handlers added before connect
+      for (const [event, handlers] of this.genericHandlers) {
+        for (const handler of handlers) {
+          this.socket.on(event, handler);
+        }
+      }
 
       this.socket.on('disconnect', (reason: string) => {
         console.log(`[CHAT] Disconnected: ${reason}`);

@@ -106,6 +106,7 @@ export class WorkspaceClient {
   private disconnectHandler: ((reason: string) => void) | null = null;
   private _connected = false;
   private _jobId: string | null = null;
+  private _excludedFiles: string[] = [];
   private _stats = {
     filesRead: 0,
     filesWritten: 0,
@@ -238,6 +239,11 @@ export class WorkspaceClient {
         if (data.status === 'aborted' || data.status === 'completed') {
           this._connected = false;
         }
+      });
+
+      // Exclusion list from relay — files the buyer's SovGuard has blocked
+      this.socket.on('workspace:exclusions', (data: { excludedFiles: string[] }) => {
+        this._excludedFiles = data.excludedFiles || [];
       });
 
       this.socket.on('ws:error', (data: { code: string; message: string }) => {
@@ -406,6 +412,11 @@ export class WorkspaceClient {
 
   get jobId(): string | null {
     return this._jobId;
+  }
+
+  /** Files excluded by buyer's SovGuard (sent by relay on connect) */
+  get excludedFiles(): string[] {
+    return [...this._excludedFiles];
   }
 
   disconnect(): void {

@@ -640,6 +640,12 @@ export class J41Client {
     return res.data;
   }
 
+  /** Request additional budget for a job */
+  async requestBudget(jobId: string, params: { amount: number; currency?: string; reason?: string; breakdown?: string }): Promise<{ id: string; status: string }> {
+    const res = await this.request<{ data: { id: string; status: string } }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/budget-request`, params);
+    return res.data;
+  }
+
   /** Submit extension payment txids */
   async payExtension(jobId: string, extensionId: string, agentTxid?: string, feeTxid?: string): Promise<{ id: string; status: string }> {
     const res = await this.request<{ data: { id: string; status: string } }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/extensions/${encodeURIComponent(extensionId)}/payment`, { agentTxid, feeTxid });

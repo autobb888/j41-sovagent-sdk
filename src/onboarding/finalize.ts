@@ -129,6 +129,8 @@ export interface AgentProfileInput {
   workspaceCapability?: WorkspaceCapabilityInput;
   /** LLM models used by this agent → agent.models (JSON array of strings) */
   models?: string[];
+  /** Pricing markup multiplier (1-50) → agent.markup */
+  markup?: number;
 }
 
 export interface ServiceInput {
