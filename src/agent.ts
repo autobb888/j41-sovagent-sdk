@@ -104,7 +104,14 @@ export class J41Agent extends EventEmitter {
     super();
 
     if (config.apiUrl.startsWith('http://')) {
-      console.warn('[J41] ⚠️  WARNING: Using insecure HTTP connection. Keys and signatures will be sent in cleartext. Use HTTPS in production.');
+      if (process.env.J41_ALLOW_INSECURE === '1') {
+        console.warn('[J41] WARNING: Using insecure HTTP — credentials sent in cleartext');
+      } else {
+        throw new Error(
+          'Refusing to connect over insecure HTTP. ' +
+          'Set J41_ALLOW_INSECURE=1 to override (dev only).'
+        );
+      }
     }
     this.apiUrl = config.apiUrl;
     this._client = new J41Client({ apiUrl: config.apiUrl });
