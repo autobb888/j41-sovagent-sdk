@@ -19,27 +19,39 @@ export interface LLMCostEntry {
 }
 
 export const LLM_COSTS: readonly LLMCostEntry[] = [
-  // OpenAI
-  { model: 'gpt-4o', inputPer1k: 0.0025, outputPer1k: 0.01, typicalJobCost: 0.015, notes: 'OpenAI flagship multimodal' },
-  { model: 'gpt-4o-mini', inputPer1k: 0.00015, outputPer1k: 0.0006, typicalJobCost: 0.0009, notes: 'OpenAI budget model' },
-  { model: 'gpt-4-turbo', inputPer1k: 0.01, outputPer1k: 0.03, typicalJobCost: 0.05, notes: 'OpenAI GPT-4 Turbo' },
-  { model: 'o1', inputPer1k: 0.015, outputPer1k: 0.06, typicalJobCost: 0.09, notes: 'OpenAI reasoning model' },
-  { model: 'o1-mini', inputPer1k: 0.003, outputPer1k: 0.012, typicalJobCost: 0.018, notes: 'OpenAI reasoning (smaller)' },
+  // Anthropic (current gen: Claude 4.5/4.6)
+  { model: 'claude-opus-4.6', inputPer1k: 0.005, outputPer1k: 0.025, typicalJobCost: 0.035, notes: 'Anthropic flagship, 1M context' },
+  { model: 'claude-sonnet-4.6', inputPer1k: 0.003, outputPer1k: 0.015, typicalJobCost: 0.021, notes: 'Best speed/intelligence ratio' },
+  { model: 'claude-haiku-4.5', inputPer1k: 0.001, outputPer1k: 0.005, typicalJobCost: 0.007, notes: 'Fastest Claude, 200K context' },
 
-  // Anthropic
-  { model: 'claude-3.5-sonnet', inputPer1k: 0.003, outputPer1k: 0.015, typicalJobCost: 0.021, notes: 'Anthropic Sonnet 3.5' },
-  { model: 'claude-3-opus', inputPer1k: 0.015, outputPer1k: 0.075, typicalJobCost: 0.105, notes: 'Anthropic Opus (premium)' },
-  { model: 'claude-3-haiku', inputPer1k: 0.00025, outputPer1k: 0.00125, typicalJobCost: 0.00175, notes: 'Anthropic Haiku (budget)' },
+  // OpenAI (current gen: GPT-4.1, o3/o4)
+  { model: 'gpt-4.1', inputPer1k: 0.002, outputPer1k: 0.008, typicalJobCost: 0.012, notes: 'OpenAI flagship' },
+  { model: 'gpt-4.1-mini', inputPer1k: 0.0004, outputPer1k: 0.0016, typicalJobCost: 0.0024, notes: 'OpenAI budget' },
+  { model: 'o3', inputPer1k: 0.01, outputPer1k: 0.04, typicalJobCost: 0.06, notes: 'OpenAI reasoning (premium)' },
+  { model: 'o4-mini', inputPer1k: 0.0011, outputPer1k: 0.0044, typicalJobCost: 0.0066, notes: 'OpenAI reasoning (budget)' },
 
-  // Google
-  { model: 'gemini-1.5-pro', inputPer1k: 0.00125, outputPer1k: 0.005, typicalJobCost: 0.0075, notes: 'Google Gemini Pro' },
-  { model: 'gemini-1.5-flash', inputPer1k: 0.000075, outputPer1k: 0.0003, typicalJobCost: 0.00045, notes: 'Google Gemini Flash (very cheap)' },
+  // xAI (current gen: Grok 4.20)
+  { model: 'grok-4.20', inputPer1k: 0.002, outputPer1k: 0.006, typicalJobCost: 0.01, notes: 'xAI flagship, 2M context' },
+  { model: 'grok-4-1-fast', inputPer1k: 0.0002, outputPer1k: 0.0005, typicalJobCost: 0.0009, notes: 'xAI fast/budget' },
 
-  // Open-source (API providers like Together, Fireworks)
-  { model: 'llama-3.1-70b', inputPer1k: 0.0009, outputPer1k: 0.0009, typicalJobCost: 0.0027, notes: 'Meta Llama 70B via API' },
-  { model: 'llama-3.1-8b', inputPer1k: 0.0002, outputPer1k: 0.0002, typicalJobCost: 0.0006, notes: 'Meta Llama 8B via API' },
-  { model: 'mixtral-8x7b', inputPer1k: 0.0006, outputPer1k: 0.0006, typicalJobCost: 0.0018, notes: 'Mistral MoE via API' },
-  { model: 'deepseek-v2', inputPer1k: 0.00014, outputPer1k: 0.00028, typicalJobCost: 0.00056, notes: 'DeepSeek V2 (very cheap)' },
+  // Google (current gen: Gemini 2.5)
+  { model: 'gemini-2.5-pro', inputPer1k: 0.00125, outputPer1k: 0.01, typicalJobCost: 0.0125, notes: 'Google flagship' },
+  { model: 'gemini-2.5-flash', inputPer1k: 0.00015, outputPer1k: 0.0006, typicalJobCost: 0.0009, notes: 'Google budget (very cheap)' },
+
+  // DeepSeek (current gen: V3, R1)
+  { model: 'deepseek-v3', inputPer1k: 0.00027, outputPer1k: 0.0011, typicalJobCost: 0.00164, notes: 'DeepSeek V3 (very cheap)' },
+  { model: 'deepseek-r1', inputPer1k: 0.00055, outputPer1k: 0.00219, typicalJobCost: 0.00329, notes: 'DeepSeek reasoning' },
+
+  // Mistral (current gen: Large 3, Small 4)
+  { model: 'mistral-large-3', inputPer1k: 0.002, outputPer1k: 0.006, typicalJobCost: 0.01, notes: 'Mistral flagship' },
+  { model: 'mistral-small-4', inputPer1k: 0.0001, outputPer1k: 0.0003, typicalJobCost: 0.0005, notes: 'Mistral budget' },
+  { model: 'codestral', inputPer1k: 0.0003, outputPer1k: 0.0009, typicalJobCost: 0.0015, notes: 'Mistral code specialist' },
+
+  // Moonshot / Kimi (active on dispatcher agents)
+  { model: 'kimi-k2', inputPer1k: 0.0002, outputPer1k: 0.001, typicalJobCost: 0.0014, notes: 'Moonshot Kimi K2 (NVIDIA)' },
+
+  // Meta (open-weight, priced via API hosts)
+  { model: 'llama-4-scout', inputPer1k: 0.0002, outputPer1k: 0.0008, typicalJobCost: 0.0012, notes: 'Meta Llama 4 Scout via API' },
 
   // Self-hosted (see SELF_HOSTED_COSTS for GPU costs)
   { model: 'self-hosted-7b', inputPer1k: 0.0001, outputPer1k: 0.0001, typicalJobCost: 0.0003, notes: 'Self-hosted 7B model (GPU amortized)' },
