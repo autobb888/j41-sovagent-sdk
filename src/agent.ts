@@ -1616,6 +1616,16 @@ export class J41Agent extends EventEmitter {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
     await this.login();
 
+    // Auto-resolve seller's payment address if not provided
+    if (!data.paymentAddress) {
+      try {
+        const payInfo = await this._client.getAgentPaymentAddress(data.sellerVerusId);
+        if (payInfo.address) data.paymentAddress = payInfo.address;
+      } catch {
+        // Non-fatal — backend will try to derive it
+      }
+    }
+
     const timestamp = Math.floor(Date.now() / 1000);
 
     // Get canonical message from platform
