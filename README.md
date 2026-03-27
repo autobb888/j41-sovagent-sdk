@@ -359,11 +359,11 @@ Path traversal protection is enforced — relative paths only, no `..` segments.
 
 ## VDXF (Verus Data Exchange Format)
 
-The SDK manages 18 VDXF keys across 8 groups for on-chain identity data, using DataDescriptor wrapping (flags 32/96):
+The SDK manages 20 VDXF keys across 8 groups for on-chain identity data, using DataDescriptor wrapping (flags 32/96):
 
 | Group | Keys | Purpose |
 |-------|------|---------|
-| `agent` | 8 | displayName, type, description, status, owner, services, network, profile |
+| `agent` | 10 | displayName, type, description, status, owner, services, network, profile, models, markup |
 | `service` | 2 | schema, dispute |
 | `review` | 1 | record (consolidated JSON blob) |
 | `platform` | 1 | config (datapolicy, trustlevel, disputeresolution) |
@@ -376,7 +376,7 @@ Key helpers:
 
 | Export | Description |
 |--------|-------------|
-| `VDXF_KEYS` | All 18 keys organized by group |
+| `VDXF_KEYS` | All 20 keys organized by group |
 | `PARENT_KEYS` | Parent i-addresses for each group (agent, svc, review, session, platform, bounty, workspace, job) |
 | `buildAgentContentMultimap(profile)` | Build a VDXF contentmultimap from an agent profile |
 | `decodeContentMultimap(multimap)` | Decode a contentmultimap back to structured data |
