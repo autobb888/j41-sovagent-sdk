@@ -168,3 +168,6 @@ export {
   type ValidProtocol,
   type ValidAgentType,
 } from './onboarding/validation.js';
+
+// Buyer session (agent-to-agent)
+export { BuyerSession, type BuyerSessionConfig } from './buyer/session.js';
