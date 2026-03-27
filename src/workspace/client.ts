@@ -258,6 +258,12 @@ export class WorkspaceClient {
         this.disconnectHandler?.(reason);
       });
 
+      // Re-mark connected on auto-reconnect (Socket.IO handles this)
+      this.socket.on('reconnect', () => {
+        this._connected = true;
+        console.log('[WorkspaceClient] Reconnected to workspace relay');
+      });
+
       // Timeout — if buyer doesn't connect within 5 minutes
       setTimeout(() => {
         if (!settled) {
