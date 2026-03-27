@@ -69,23 +69,16 @@ export class BuyerSession {
     await (this.agent as any)._client.recordPayment(this.job.id, txid);
     console.log(`[BuyerSession] Payment recorded`);
 
-    // Send platform fee (best-effort, non-blocking)
-    try {
-      const feeAddr = this.job.payment?.platformFeeAddress;
-      const feeAmt = this.job.payment?.feeAmount;
-      if (feeAddr && feeAmt && feeAmt > 0) {
-        // Wait for UTXO to settle
-        await new Promise(r => setTimeout(r, 3000));
-        const feeTxid = await this.agent.sendCurrency(feeAddr, feeAmt);
-        console.log(`[BuyerSession] Platform fee sent: ${feeTxid}`);
-      }
-    } catch (e: any) {
-      console.warn(`[BuyerSession] Fee send failed (non-fatal): ${e.message}`);
+    // Platform fee — retry in background after block confirms
+    const feeAddr = this.job.payment?.platformFeeAddress;
+    const feeAmt = this.job.payment?.feeAmount;
+    if (feeAddr && feeAmt && feeAmt > 0) {
+      this._sendFeeInBackground(feeAddr, feeAmt);
     }
 
     // Wait for payment verification + job to go in_progress
     console.log(`[BuyerSession] Waiting for payment verification...`);
-    const maxWaitMs = 10 * 60 * 1000; // 10 min max
+    const maxWaitMs = 15 * 60 * 1000; // 15 min max (6 block confirmations + watcher cycle)
     const startWait = Date.now();
     while (Date.now() - startWait < maxWaitMs) {
       const check = await (this.agent as any)._client.getJob(this.job.id);
@@ -177,6 +170,23 @@ export class BuyerSession {
     }
 
     this.config.onSessionEnd?.(reason);
+  }
+
+  /** Send platform fee — retries after blocks until successful */
+  private async _sendFeeInBackground(feeAddr: string, feeAmt: number): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // Wait for block (60s on testnet, 60s on mainnet)
+      await new Promise(r => setTimeout(r, 65000));
+      if (!this._active && attempt > 0) return;
+      try {
+        const feeTxid = await this.agent.sendCurrency(feeAddr, feeAmt);
+        console.log(`[BuyerSession] Platform fee sent: ${feeTxid}`);
+        return;
+      } catch (e: any) {
+        console.warn(`[BuyerSession] Fee attempt ${attempt + 1}/5: ${e.message}`);
+      }
+    }
+    console.warn(`[BuyerSession] Platform fee failed after 5 attempts`);
   }
 
   /** Get the job object */
