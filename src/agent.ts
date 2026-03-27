@@ -1680,14 +1680,14 @@ export class J41Agent extends EventEmitter {
     }
 
     // Build and sign transaction
-    // Use agent's i-address as change address so funds stay with this identity
-    const { buildPayment } = await import('./tx/payment.js');
+    // Change goes to R-address (i-address change needs script support from backend)
+    const { buildPayment, wifToAddress } = await import('./tx/payment.js');
     const rawhex = buildPayment({
       wif: this.wif,
       toAddress,
       amount,
       utxos: utxos.filter((u: any) => u.satoshis > 0),
-      changeAddress: this.iAddress || undefined,
+      changeAddress: wifToAddress(this.wif, this.networkType),
       network: this.networkType,
     });
 
