@@ -79,17 +79,42 @@ export function buildPayment(params: PaymentParams): string {
   txb.setVersion(4);
   txb.setVersionGroupId(0x892f2085);
 
-  // Add inputs
+  // Add inputs — use script for i-address UTXOs (identity outputs)
   for (const utxo of selected) {
-    txb.addInput(utxo.txid, utxo.vout);
+    if ((utxo as any).script) {
+      // i-address UTXO: pass the scriptPubKey so the builder knows how to spend it
+      const scriptBuf = Buffer.from((utxo as any).script, 'hex');
+      txb.addInput(utxo.txid, utxo.vout, 0xffffffff, scriptBuf);
+    } else {
+      // R-address UTXO: standard P2PKH
+      txb.addInput(utxo.txid, utxo.vout);
+    }
   }
 
-  // Payment output
-  txb.addOutput(utxolib.address.toOutputScript(toAddress, networkObj), amountSatoshis);
+  // Payment output — support both R-address and i-address destinations
+  let paymentScript: Buffer;
+  try {
+    paymentScript = utxolib.address.toOutputScript(toAddress, networkObj);
+  } catch {
+    // If toOutputScript fails (i-address), build a P2ID script manually
+    // This shouldn't happen for outgoing payments (destinations are usually R-addresses)
+    throw new Error(`Cannot create output script for address: ${toAddress}. Use an R-address as the destination.`);
+  }
+  txb.addOutput(paymentScript, amountSatoshis);
 
-  // Change output (if above dust threshold)
+  // Change output — send change back to the source address
   if (changeSatoshis > 1000) {
-    txb.addOutput(utxolib.address.toOutputScript(changeAddress, networkObj), changeSatoshis);
+    try {
+      txb.addOutput(utxolib.address.toOutputScript(changeAddress, networkObj), changeSatoshis);
+    } catch {
+      // If change address is an i-address, use the script from the first i-address input
+      const iUtxoScript = selected.find(u => (u as any).script);
+      if (iUtxoScript) {
+        txb.addOutput(Buffer.from((iUtxoScript as any).script, 'hex'), changeSatoshis);
+      } else {
+        throw new Error(`Cannot create change output for address: ${changeAddress}`);
+      }
+    }
   }
 
   // Sign all inputs

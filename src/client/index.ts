@@ -1566,6 +1566,8 @@ export interface Utxo {
   address?: string;
   satoshis: number;
   height: number;
+  /** Hex-encoded scriptPubKey — required for spending i-address UTXOs */
+  script?: string;
 }
 
 export interface UtxoResponse {
