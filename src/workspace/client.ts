@@ -425,6 +425,13 @@ export class WorkspaceClient {
     return [...this._excludedFiles];
   }
 
+  /** Send keepalive ping to prevent relay idle timeout */
+  ping(): void {
+    if (this.socket && this._connected) {
+      this.socket.emit('workspace:ping');
+    }
+  }
+
   disconnect(): void {
     this._stats = { filesRead: 0, filesWritten: 0, listDirectoryCalls: 0, connectedAt: 0 };
     for (const [, pending] of this.pendingRequests) {
