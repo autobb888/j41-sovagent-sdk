@@ -180,7 +180,9 @@ export class BuyerSession {
       if (!this._active && attempt > 0) return;
       try {
         const feeTxid = await this.agent.sendCurrency(feeAddr, feeAmt);
-        console.log(`[BuyerSession] Platform fee sent: ${feeTxid}`);
+        // Record fee txid with the platform
+        await (this.agent as any)._client.recordPlatformFee(this.job!.id, feeTxid);
+        console.log(`[BuyerSession] Platform fee sent + recorded: ${feeTxid}`);
         return;
       } catch (e: any) {
         console.warn(`[BuyerSession] Fee attempt ${attempt + 1}/5: ${e.message}`);
