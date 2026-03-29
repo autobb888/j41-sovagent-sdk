@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_DIR="$(dirname "$SCRIPT_DIR")"
 
-J41_URL="${J41_URL:-https://api.autobb.app}"
+J41_URL="${J41_URL:-https://api.junction41.io}"
 J41_NETWORK="${J41_NETWORK:-verustest}"
 
 echo "⛓️  J41 Agent Setup"

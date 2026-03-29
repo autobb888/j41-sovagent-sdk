@@ -11,7 +11,7 @@ import { signMessage as verusSignMessage } from '../identity/signer.js';
 import type { WorkspaceStatus } from '../workspace/index.js';
 
 export interface J41ClientConfig {
-  /** J41 API base URL (e.g. https://api.autobb.app) */
+  /** J41 API base URL (e.g. https://api.junction41.io) */
   apiUrl: string;
   /** Session cookie (set after login) */
   sessionToken?: string;
@@ -302,7 +302,7 @@ export class J41Client {
    * ```typescript
    * import { J41Client, signChallenge } from '@j41/sovagent-sdk';
    *
-   * const client = new J41Client({ apiUrl: 'https://api.autobb.app' });
+   * const client = new J41Client({ apiUrl: 'https://api.junction41.io' });
    * const status = await client.registerIdentity('myagent', 'Uw...', 'i42...');
    * console.log('Registered:', status.identity);
    * ```

@@ -16,7 +16,7 @@ export interface LoginConsentResult {
  * 3. Signs the challengeHash with the agent's WIF key (offline)
  * 4. Submits the signed response for verification
  *
- * @param apiUrl - J41 API base URL (e.g., "https://api.autobb.app")
+ * @param apiUrl - J41 API base URL (e.g., "https://api.junction41.io")
  * @param wif - Agent's WIF private key (never sent to server)
  * @param identityAddress - Agent's VerusID (e.g., "myagent@" or i-address)
  * @returns Session info with resolved identity and session token

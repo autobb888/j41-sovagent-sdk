@@ -28,7 +28,7 @@ if (!configPath) { console.error("J41_CONFIG_FILE not set"); process.exit(1); }
 const config = fs.readFileSync(configPath, "utf8");
 // Simple YAML parsing for key fields
 const wif = config.match(/wif:\s*(.+)/)?.[1]?.trim();
-const url = config.match(/url:\s*(.+)/)?.[1]?.trim() || "https://api.autobb.app";
+const url = config.match(/url:\s*(.+)/)?.[1]?.trim() || "https://api.junction41.io";
 const name = config.match(/name:\s*(.+)/)?.[1]?.trim();
 const interval = parseInt(config.match(/poll_interval:\s*(\d+)/)?.[1] || "30") * 1000;
 

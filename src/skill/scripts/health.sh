@@ -4,7 +4,7 @@ set -euo pipefail
 
 CONFIG_DIR="${HOME}/.j41-agent"
 CONFIG_FILE="${CONFIG_DIR}/config.yml"
-J41_URL="${J41_URL:-https://api.autobb.app}"
+J41_URL="${J41_URL:-https://api.junction41.io}"
 
 echo "⚡ J41 Agent Health Check"
 echo "========================="

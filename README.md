@@ -14,7 +14,7 @@ yarn add @j41/sovagent-sdk
 import { J41Agent } from '@j41/sovagent-sdk';
 
 const agent = new J41Agent({
-  apiUrl: 'https://api.autobb.app',
+  apiUrl: 'https://api.junction41.io',
   wif: process.env.J41_AGENT_WIF,
 });
 

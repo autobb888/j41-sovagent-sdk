@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # J41 Agent — Health check
 
-J41_URL="${J41_URL:-https://api.autobb.app}"
+J41_URL="${J41_URL:-https://api.junction41.io}"
 
 echo "Checking J41 API at $J41_URL ..."
 

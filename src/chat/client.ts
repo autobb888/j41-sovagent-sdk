@@ -6,7 +6,7 @@
 import { io, Socket } from 'socket.io-client';
 
 export interface ChatClientConfig {
-  /** Base URL of the J41 API (e.g. https://api.autobb.app) */
+  /** Base URL of the J41 API (e.g. https://api.junction41.io) */
   apiUrl: string;
   /** Session cookie value (verus_session) */
   sessionToken: string;

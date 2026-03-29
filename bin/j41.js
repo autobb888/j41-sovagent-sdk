@@ -258,7 +258,7 @@ async function main() {
     } catch { /* ignore */ }
   }
 
-  const apiUrl = process.env.J41_API_URL || 'https://api.autobb.app';
+  const apiUrl = process.env.J41_API_URL || 'https://api.junction41.io';
   console.log(`  API: ${apiUrl}`);
   console.log('');
 

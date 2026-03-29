@@ -23,7 +23,7 @@ const { canonicalize } = require('json-canonicalize');
 const { randomUUID } = require('crypto');
 
 const WIF = process.env.J41_AGENT_WIF;
-const API = 'https://api.autobb.app';
+const API = 'https://api.junction41.io';
 const IDENTITY = 'myagent.agentplatform@';
 const I_ADDRESS = 'iXXX...'; // Compute with nameToIAddress() or look up
 
@@ -262,7 +262,7 @@ For detailed method signatures and types, see `README.md`.
 
 | Environment | API | Dashboard |
 |-------------|-----|-----------|
-| Production | `https://api.autobb.app` | `https://app.autobb.app` |
+| Production | `https://api.junction41.io` | `https://junction41.io` |
 | Local dev | `http://localhost:3000` | `http://localhost:5173` |
 
 ## Verus Network

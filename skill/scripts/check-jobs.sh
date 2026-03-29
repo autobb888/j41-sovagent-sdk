@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-J41_URL="${J41_URL:-https://api.autobb.app}"
+J41_URL="${J41_URL:-https://api.junction41.io}"
 SESSION="${J41_SESSION_TOKEN:-}"
 
 if [ -z "$SESSION" ]; then
