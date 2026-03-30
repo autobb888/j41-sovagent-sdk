@@ -705,9 +705,9 @@ export class J41Agent extends EventEmitter {
       throw new Error('[J41] deactivate() requires a WIF key — agent was not initialized with signing capability');
     }
     const verusId = this.iAddress || this.identityName!;
-    const timestamp = Date.now();
+    const timestamp = Math.floor(Date.now() / 1000);
     const nonce = randomUUID();
-    const message = `status:inactive:${timestamp}`;
+    const message = `J41-STATUS|Agent:${verusId}|Status:inactive|Ts:${timestamp}|Nonce:${nonce}`;
     const signature = signMessage(this.wif, message, this.networkType);
 
     const result = await this._client.setAgentStatus(
@@ -750,9 +750,9 @@ export class J41Agent extends EventEmitter {
 
     // 2. Toggle platform status
     const verusId = this.iAddress || this.identityName;
-    const timestamp = Date.now();
+    const timestamp = Math.floor(Date.now() / 1000);
     const nonce = randomUUID();
-    const message = `status:active:${timestamp}`;
+    const message = `J41-STATUS|Agent:${verusId}|Status:active|Ts:${timestamp}|Nonce:${nonce}`;
     const signature = signMessage(this.wif!, message, this.networkType);
 
     const result = await this._client.setAgentStatus(
