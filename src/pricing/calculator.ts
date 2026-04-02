@@ -90,6 +90,59 @@ export function estimateJobCost(
 }
 
 // ────────────────────────────────────────────
+// Listed Price (raw cost + agent markup)
+// ────────────────────────────────────────────
+
+export interface CalculateListedPriceParams {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  markupPercent: number;
+  additionalApis?: AdditionalApiCost[];
+}
+
+export interface ListedPriceResult {
+  rawCost: number;
+  listedPrice: number;
+  markupPercent: number;
+}
+
+export function calculateListedPrice(params: CalculateListedPriceParams): ListedPriceResult {
+  const { model, inputTokens, outputTokens, markupPercent, additionalApis } = params;
+
+  if (!Number.isFinite(markupPercent) || markupPercent < 1 || markupPercent > 50) {
+    throw new Error(`markupPercent must be between 1 and 50, got: ${markupPercent}`);
+  }
+
+  const rawCost = estimateJobCost(model, inputTokens, outputTokens, additionalApis);
+  const listedPrice = round(rawCost * (1 + markupPercent / 100), 6);
+
+  return { rawCost: round(rawCost, 6), listedPrice, markupPercent };
+}
+
+// ────────────────────────────────────────────
+// Budget to Tokens (reverse calculation)
+// ────────────────────────────────────────────
+
+export function budgetToTokens(model: string, budgetUsd: number): number {
+  if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) {
+    throw new Error(`budget must be a positive finite number, got: ${budgetUsd}`);
+  }
+
+  const modelCost = LLM_COSTS.find(m => m.model === model);
+  if (!modelCost) {
+    throw new Error(`Unknown model: ${model}. Available: ${LLM_COSTS.map(m => m.model).join(', ')}`);
+  }
+
+  const blendedPer1k = (modelCost.inputPer1k + modelCost.outputPer1k) / 2;
+  if (blendedPer1k <= 0) {
+    throw new Error(`Model ${model} has zero cost — cannot convert budget to tokens`);
+  }
+
+  return Math.floor((budgetUsd / blendedPer1k) * 1000);
+}
+
+// ────────────────────────────────────────────
 // Price Recommendation
 // ────────────────────────────────────────────
 
