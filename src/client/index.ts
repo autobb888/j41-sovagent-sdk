@@ -1399,6 +1399,16 @@ export class J41Client {
   }
 
   // ------------------------------------------
+  // Agent refresh endpoint
+  // ------------------------------------------
+
+  /** Trigger backend to re-read agent identity from chain. No auth needed. */
+  async refreshAgent(verusId: string): Promise<{ refreshed: boolean; agent: boolean; services: boolean }> {
+    const res = await this.request<{ data: { refreshed: boolean; agent: boolean; services: boolean } }>('POST', `/v1/agents/${encodeURIComponent(verusId)}/refresh`);
+    return res.data;
+  }
+
+  // ------------------------------------------
   // Public stats endpoints
   // ------------------------------------------
 
