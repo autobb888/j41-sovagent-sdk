@@ -9,12 +9,18 @@ import type {
   JobRecordInput,
   ReviewRecordInput,
   WorkspaceAttestationInput,
+  DisputePolicy,
 } from './finalize.js';
 
 // --- Constants ---
 
 export const DATA_DESCRIPTOR_KEY = 'i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv';
 
+/**
+ * @deprecated Parent group keys removed in 25-key flat format (2026-03-28).
+ * Kept ONLY for backwards-compatible reading of old on-chain data.
+ * Do NOT use for new writes — use flat VDXF_KEYS directly.
+ */
 export const PARENT_KEYS = {
   agent:     'i8XMutgp1MRNoFoHQuzZ4ReowJd9NvCgDP', // agentplatform::agent
   service:   'i8pfR86vr8qbTPHbhmNQFJo8MYSWKv2TZD', // agentplatform::svc
@@ -26,24 +32,33 @@ export const PARENT_KEYS = {
   job:       'iC6GEa5mq15EBatbHiwVtd53QHb8HiEDnT', // agentplatform::job
 } as const;
 
+/**
+ * 25 flat VDXF keys — each is its own top-level contentmultimap entry.
+ * No parent group wrapping. Values wrapped via makeSubDD().
+ */
 export const VDXF_KEYS = {
-  // 10 agent keys
+  // 15 agent keys
   agent: {
-    displayName: 'iKkdwxhdupLgf7v2qn4JGBQHntsBb17kjW',  // agentplatform::agent.displayname
-    type:        'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',  // agentplatform::agent.type
-    description: 'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',  // agentplatform::agent.description
-    status:      'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',  // agentplatform::agent.status
-    owner:       'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu',  // agentplatform::agent.owner
-    services:    'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',  // agentplatform::agent.services
-    network:     'iJ15GBkMfyMxvEf7wivLKbXRjpqS119QrM',  // agentplatform::agent.network
-    profile:     'iAFyowB5a3W5BLEv6tE7EPHAmGhaYcGJCt',  // agentplatform::agent.profile
-    models:      'iQJUQmdFSmM49cvLJfKLZnuRYsjXSmTTHY',  // agentplatform::agent.models
-    markup:      'iBLx3rga8DewiN6gyQyC5avFin8fnnojnS',  // agentplatform::agent.markup
+    displayName:          'iKkdwxhdupLgf7v2qn4JGBQHntsBb17kjW',  // agentplatform::agent.displayname
+    type:                 'iNxeLSDFARVQezfEt4i8CBZjTSRpFTPAyP',  // agentplatform::agent.type
+    description:          'iQr3yKEn2DXaG4GQGVAVYivC3jwcvScfzk',  // agentplatform::agent.description
+    status:               'iLy373iaKafmRCY43ahty4m8aLQx32y8Fh',  // agentplatform::agent.status
+    payAddress:           'iRxxUvbDXJT5wVpnx7oc9nkYALCoDh6aTD',  // agentplatform::agent.payaddress
+    services:             'i8Wk7fcbsBWtcf965Z3WvDUjahF1aTH1tu',  // agentplatform::agent.services
+    models:               'iQJUQmdFSmM49cvLJfKLZnuRYsjXSmTTHY',  // agentplatform::agent.models
+    markup:               'iBLx3rga8DewiN6gyQyC5avFin8fnnojnS',  // agentplatform::agent.markup
+    networkCapabilities:  'iF7174LxgcAnu3qZ7iJzSyJYthDJXBzQNw',  // agentplatform::agent.network.capabilities
+    networkEndpoints:     'i5VzGsiFmJYuRr7b8aUyHzAS8vd9DC4puS',  // agentplatform::agent.network.endpoints
+    networkProtocols:     'iSAVTXMb9TyWWuDDnWopFhgZpjm21WPigv',  // agentplatform::agent.network.protocols
+    profileTags:          'iKM57qfzmgM1sxBgR3XBQa2XCRURZ2YVo2',  // agentplatform::agent.profile.tags
+    profileWebsite:       'i7HY93tqfqCkpyKYiNtcDbioAgF8gRL9TQ',  // agentplatform::agent.profile.website
+    profileAvatar:        'iALo91Z75iXZxMvymvQMRwo7GAeHv5veKc',  // agentplatform::agent.profile.avatar
+    profileCategory:      'iD3quozCGbzJyZ29uvRCeecr12np2dMsvN',  // agentplatform::agent.profile.category
+    disputePolicy:        'iFxerhcrMr2e5eWyvHiXuWHXj2dnhEZF8p',  // agentplatform::agent.disputepolicy (was svc.dispute)
   },
-  // 2 service schema keys (on agentplatform@ only — agents don't write these)
+  // 1 service schema key (on agentplatform@ only — agents don't write these)
   service: {
     schema:  'i4D2ifpAG7BYnfJZGVT1Tph7BMkp9qZPyS',  // agentplatform::svc.schema
-    dispute: 'iFxerhcrMr2e5eWyvHiXuWHXj2dnhEZF8p',   // agentplatform::svc.dispute
   },
   // 1 review key
   review: {
@@ -73,6 +88,13 @@ export const VDXF_KEYS = {
   },
 } as const;
 
+// Legacy agent keys removed in 25-key migration (for backwards-compat decoding)
+const LEGACY_AGENT_KEYS: Record<string, string> = {
+  'iEEqjQsh5YDrwMyxyTrHFrMHTqrsPziCqu': 'owner',   // agent.owner — REMOVED
+  'iJ15GBkMfyMxvEf7wivLKbXRjpqS119QrM': 'network',  // agent.network — REMOVED (split into 3)
+  'iAFyowB5a3W5BLEv6tE7EPHAmGhaYcGJCt': 'profile',  // agent.profile — REMOVED (split into 4)
+};
+
 // --- Reverse lookups ---
 
 const REVERSE_LOOKUPS: Record<string, Record<string, string>> = {};
@@ -80,6 +102,20 @@ for (const [group, keys] of Object.entries(VDXF_KEYS)) {
   REVERSE_LOOKUPS[group] = Object.fromEntries(
     Object.entries(keys).map(([k, v]) => [v, k])
   );
+}
+
+// Build legacy agent reverse lookup (current keys + removed keys)
+const LEGACY_AGENT_REVERSE: Record<string, string> = {
+  ...REVERSE_LOOKUPS['agent'],
+  ...LEGACY_AGENT_KEYS,
+};
+
+// Global flat reverse: i-address → field name (across all groups)
+const ALL_KEYS_FLAT: Record<string, string> = {};
+for (const [, keys] of Object.entries(VDXF_KEYS)) {
+  for (const [field, iAddr] of Object.entries(keys)) {
+    ALL_KEYS_FLAT[iAddr] = field;
+  }
 }
 
 function getReverseLookup(type: string): Record<string, string> {
@@ -105,21 +141,6 @@ export function makeSubDD(label: string, value: string): object {
 }
 
 /**
- * Build an outer DataDescriptor that wraps an array of sub-DDs.
- * flags=32 (raw), objectdata is the sub-DD array.
- */
-function makeOuterDD(subDDs: object[], label?: string): object {
-  return {
-    [DATA_DESCRIPTOR_KEY]: {
-      version: 1,
-      flags: 32,
-      objectdata: subDDs,
-      ...(label ? { label } : {}),
-    },
-  };
-}
-
-/**
  * Parse a sub-DD to extract label + value.
  */
 function parseSubDD(entry: unknown): { label: string; value: unknown } | null {
@@ -139,22 +160,19 @@ function parseSubDD(entry: unknown): { label: string; value: unknown } | null {
 }
 
 /**
- * Parse an outer DD (nested pattern — objectdata is an array of sub-DDs).
- * Returns a map of resolved field names → values.
+ * Parse an outer DD (legacy nested pattern — objectdata is an array of sub-DDs).
+ * Returns a map of resolved field names -> values.
  */
-function parseOuterDD(entry: unknown, type: string): Record<string, unknown> | null {
+function parseOuterDD(entry: unknown, reverseLookup: Record<string, string>): Record<string, unknown> | null {
   if (typeof entry !== 'object' || entry === null) return null;
   const dd = (entry as Record<string, unknown>)[DATA_DESCRIPTOR_KEY] as Record<string, unknown> | undefined;
   if (!dd) return null;
   if (!Array.isArray(dd.objectdata)) return null;
 
   const record: Record<string, unknown> = {};
-  const reverseLookup = getReverseLookup(type);
-
   for (const subEntry of dd.objectdata) {
     const sub = parseSubDD(subEntry);
     if (!sub || !sub.label) continue;
-    // Resolve label: try as i-address first, then as plain field name
     const fieldName = reverseLookup[sub.label] || sub.label;
     record[fieldName] = sub.value;
   }
@@ -203,130 +221,341 @@ function serializeServiceArray(services: ServiceInput[]): Record<string, unknown
     if (svc.sovguard != null) obj.sovguard = svc.sovguard;
     if (svc.resolutionWindow != null) obj.resolutionWindow = svc.resolutionWindow;
     if (svc.refundPolicy) obj.refundPolicy = svc.refundPolicy;
+    if (svc.costBreakdown) obj.costBreakdown = svc.costBreakdown;
     return obj;
   });
 }
 
-// --- Build nested DD contentmultimap ---
+// --- Build flat contentmultimap (25-key format) ---
 
 /**
- * Build a nested DataDescriptor contentmultimap for an agent profile + services.
- * Produces the on-chain format: { parentKeyIAddress: [outerDD] }
+ * Build a flat contentmultimap for an agent profile + services.
+ * Each field is its own top-level key wrapped in makeSubDD().
  *
- * Agent core fields + services JSON array + network/profile blobs → agent parent key.
- * Session params → session parent key.
- * Platform config → platform parent key (single JSON blob).
- * Workspace capability → workspace parent key.
+ * Network fields → 3 separate keys (capabilities, endpoints, protocols).
+ * Profile fields → 4 separate keys (tags, website, avatar, category).
+ * No parent key wrapping.
  */
 export function buildAgentContentMultimap(
   profile?: AgentProfileInput,
   services: ServiceInput[] = [],
+  disputePolicy?: DisputePolicy,
 ): Record<string, unknown[]> {
-  const contentmultimap: Record<string, unknown[]> = {};
+  const cmm: Record<string, unknown[]> = {};
+  const K = VDXF_KEYS.agent;
 
   if (profile) {
-    // --- Agent data ---
-    const agentSubDDs: object[] = [];
-    const K = VDXF_KEYS.agent;
+    // Core agent fields
+    cmm[K.displayName] = [makeSubDD(K.displayName, profile.name)];
+    cmm[K.type] = [makeSubDD(K.type, profile.type)];
+    cmm[K.description] = [makeSubDD(K.description, profile.description)];
+    cmm[K.status] = [makeSubDD(K.status, 'active')];
 
-    agentSubDDs.push(makeSubDD(K.displayName, profile.name));
-    agentSubDDs.push(makeSubDD(K.type, profile.type));
-    agentSubDDs.push(makeSubDD(K.description, profile.description));
-    agentSubDDs.push(makeSubDD(K.status, 'active'));
+    if (profile.payAddress) {
+      cmm[K.payAddress] = [makeSubDD(K.payAddress, profile.payAddress)];
+    }
 
-    if (profile.owner) agentSubDDs.push(makeSubDD(K.owner, profile.owner));
-
-    // Services as JSON array under agent.services
+    // Services as JSON array
     if (services.length > 0) {
-      agentSubDDs.push(makeSubDD(K.services, JSON.stringify(serializeServiceArray(services))));
+      cmm[K.services] = [makeSubDD(K.services, JSON.stringify(serializeServiceArray(services)))];
     }
 
-    // Consolidated network blob → agent.network
-    if (profile.network && Object.keys(profile.network).length > 0) {
-      agentSubDDs.push(makeSubDD(K.network, JSON.stringify(profile.network)));
+    // Network fields → 3 individual flat keys
+    if (profile.network) {
+      if (profile.network.capabilities?.length) {
+        cmm[K.networkCapabilities] = [makeSubDD(K.networkCapabilities, JSON.stringify(profile.network.capabilities))];
+      }
+      if (profile.network.endpoints?.length) {
+        cmm[K.networkEndpoints] = [makeSubDD(K.networkEndpoints, JSON.stringify(profile.network.endpoints))];
+      }
+      if (profile.network.protocols?.length) {
+        cmm[K.networkProtocols] = [makeSubDD(K.networkProtocols, JSON.stringify(profile.network.protocols))];
+      }
     }
 
-    // Consolidated profile blob → agent.profile
-    if (profile.profile && Object.keys(profile.profile).length > 0) {
-      agentSubDDs.push(makeSubDD(K.profile, JSON.stringify(profile.profile)));
+    // Profile fields → 4 individual flat keys
+    if (profile.profile) {
+      if (profile.profile.tags?.length) {
+        cmm[K.profileTags] = [makeSubDD(K.profileTags, JSON.stringify(profile.profile.tags))];
+      }
+      if (profile.profile.website) {
+        cmm[K.profileWebsite] = [makeSubDD(K.profileWebsite, profile.profile.website)];
+      }
+      if (profile.profile.avatar) {
+        cmm[K.profileAvatar] = [makeSubDD(K.profileAvatar, profile.profile.avatar)];
+      }
+      if (profile.profile.category) {
+        cmm[K.profileCategory] = [makeSubDD(K.profileCategory, profile.profile.category)];
+      }
     }
 
-    // LLM models declaration → agent.models (JSON array of strings)
-    if (profile.models && profile.models.length > 0) {
-      agentSubDDs.push(makeSubDD(K.models, JSON.stringify(profile.models)));
+    // LLM models → agent.models (JSON array)
+    if (profile.models?.length) {
+      cmm[K.models] = [makeSubDD(K.models, JSON.stringify(profile.models))];
     }
 
-    // Pricing markup multiplier → agent.markup (number 1-50)
+    // Pricing markup → agent.markup
     if (profile.markup != null && profile.markup >= 1 && profile.markup <= 50) {
-      agentSubDDs.push(makeSubDD(K.markup, String(profile.markup)));
+      cmm[K.markup] = [makeSubDD(K.markup, String(profile.markup))];
     }
 
-    contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
-
-    // --- Session data (consolidated into single params JSON object) ---
+    // Session params → session.params (JSON object)
     if (profile.session && Object.keys(profile.session).length > 0) {
-      const sessionSubDDs: object[] = [];
-      sessionSubDDs.push(makeSubDD(VDXF_KEYS.session.params, JSON.stringify(profile.session)));
-
-      contentmultimap[PARENT_KEYS.session] = [makeOuterDD(sessionSubDDs, PARENT_KEYS.session)];
+      cmm[VDXF_KEYS.session.params] = [makeSubDD(VDXF_KEYS.session.params, JSON.stringify(profile.session))];
     }
 
-    // --- Platform data (single config JSON blob) ---
+    // Platform config → platform.config (JSON object)
     if (profile.platformConfig && Object.keys(profile.platformConfig).length > 0) {
-      const platformSubDDs: object[] = [];
-      platformSubDDs.push(makeSubDD(VDXF_KEYS.platform.config, JSON.stringify(profile.platformConfig)));
-      contentmultimap[PARENT_KEYS.platform] = [makeOuterDD(platformSubDDs, PARENT_KEYS.platform)];
+      cmm[VDXF_KEYS.platform.config] = [makeSubDD(VDXF_KEYS.platform.config, JSON.stringify(profile.platformConfig))];
     }
 
-    // --- Workspace capability ---
+    // Workspace capability → workspace.capability (JSON object)
     if (profile.workspaceCapability) {
-      const wsSubDDs: object[] = [];
-      wsSubDDs.push(makeSubDD(VDXF_KEYS.workspace.capability, JSON.stringify(profile.workspaceCapability)));
-      contentmultimap[PARENT_KEYS.workspace] = [makeOuterDD(wsSubDDs, PARENT_KEYS.workspace)];
+      cmm[VDXF_KEYS.workspace.capability] = [makeSubDD(VDXF_KEYS.workspace.capability, JSON.stringify(profile.workspaceCapability))];
+    }
+
+    // Dispute policy → agent.disputePolicy (JSON object)
+    if (disputePolicy) {
+      cmm[K.disputePolicy] = [makeSubDD(K.disputePolicy, JSON.stringify(disputePolicy))];
     }
   } else if (services.length > 0) {
-    // Services-only (no profile) — still goes under agent parent
-    const agentSubDDs: object[] = [];
-    agentSubDDs.push(makeSubDD(VDXF_KEYS.agent.services, JSON.stringify(serializeServiceArray(services))));
-    contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
+    // Services-only (no profile)
+    cmm[K.services] = [makeSubDD(K.services, JSON.stringify(serializeServiceArray(services)))];
   }
 
-  return contentmultimap;
+  return cmm;
 }
 
-// --- Decode nested DD contentmultimap ---
+// --- Decode contentmultimap (supports both flat + legacy formats) ---
 
 /**
- * Decode a nested DataDescriptor contentmultimap back into an AgentProfileInput + services.
- * Handles the 18-key consolidated format.
+ * Detect whether a contentmultimap uses the legacy parent-keyed format.
+ * Only triggers if the agent parent key is present (the main profile container).
+ * Stray legacy keys (e.g. review parent from pre-migration) don't trigger legacy mode.
+ */
+function isLegacyFormat(cmm: Record<string, unknown[]>): boolean {
+  return !!cmm[PARENT_KEYS.agent];
+}
+
+/**
+ * Decode a flat-format contentmultimap entry: parse the sub-DD value.
+ */
+function parseFlatEntry(entries: unknown[]): unknown {
+  if (!entries?.length) return null;
+  // Take the LAST entry (updateidentity appends, latest wins)
+  const sub = parseSubDD(entries[entries.length - 1]);
+  return sub?.value ?? null;
+}
+
+/**
+ * Try to parse a string value as JSON, return original if not JSON.
+ */
+function tryParseJson(val: unknown): unknown {
+  if (typeof val !== 'string') return val;
+  try { return JSON.parse(val); } catch { return val; }
+}
+
+/**
+ * Decode services from a JSON array value.
+ */
+function decodeServicesArray(raw: unknown): ServiceInput[] {
+  const svcArr: Record<string, unknown>[] = typeof raw === 'string'
+    ? JSON.parse(raw) : raw as Record<string, unknown>[];
+  const services: ServiceInput[] = [];
+
+  for (const svc of svcArr) {
+    if (!svc.name) continue;
+    let price: number | undefined;
+    let currency: string | undefined;
+    let acceptedCurrencies: Array<{ currency: string; price: number }> | undefined;
+
+    if (svc.pricing && Array.isArray(svc.pricing)) {
+      const pricingArr = svc.pricing as Array<Record<string, unknown>>;
+      if (pricingArr.length > 0) {
+        price = Number(pricingArr[0].amount ?? pricingArr[0].price);
+        currency = pricingArr[0].currency as string;
+      }
+      if (pricingArr.length > 1) {
+        acceptedCurrencies = pricingArr.slice(1).map(p => ({
+          currency: p.currency as string,
+          price: Number(p.amount ?? p.price),
+        }));
+      }
+    }
+
+    const svcInput: ServiceInput = {
+      name: svc.name as string,
+      description: svc.description as string | undefined,
+      category: svc.category as string | undefined,
+      price,
+      currency,
+      turnaround: svc.turnaround as string | undefined,
+      paymentTerms: svc.paymentTerms as ServiceInput['paymentTerms'],
+      privateMode: svc.privateMode != null ? svc.privateMode === true || svc.privateMode === 'true' : undefined,
+      sovguard: svc.sovguard != null ? svc.sovguard === true || svc.sovguard === 'true' : undefined,
+      status: svc.status as string | undefined,
+    };
+    if (acceptedCurrencies) svcInput.acceptedCurrencies = acceptedCurrencies;
+    if (svc.resolutionWindow != null) svcInput.resolutionWindow = Number(svc.resolutionWindow);
+    if (svc.refundPolicy) {
+      svcInput.refundPolicy = typeof svc.refundPolicy === 'string'
+        ? JSON.parse(svc.refundPolicy as string)
+        : svc.refundPolicy as ServiceInput['refundPolicy'];
+    }
+    if (svc.costBreakdown) {
+      svcInput.costBreakdown = typeof svc.costBreakdown === 'string'
+        ? JSON.parse(svc.costBreakdown as string)
+        : svc.costBreakdown as ServiceInput['costBreakdown'];
+    }
+    services.push(svcInput);
+  }
+  return services;
+}
+
+/**
+ * Decode a contentmultimap back into AgentProfileInput + services.
+ * Supports BOTH the new 25-key flat format and the legacy parent-keyed format.
  */
 export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
   profile: AgentProfileInput;
   services: ServiceInput[];
+  disputePolicy?: DisputePolicy;
+} {
+  if (isLegacyFormat(cmm)) {
+    return decodeLegacyContentMultimap(cmm);
+  }
+  return decodeFlatContentMultimap(cmm);
+}
+
+/**
+ * Decode new 25-key flat format.
+ */
+function decodeFlatContentMultimap(cmm: Record<string, unknown[]>): {
+  profile: AgentProfileInput;
+  services: ServiceInput[];
+  disputePolicy?: DisputePolicy;
+} {
+  const profile: Partial<AgentProfileInput> = {};
+  const services: ServiceInput[] = [];
+  const K = VDXF_KEYS.agent;
+
+  // Core agent fields
+  const name = parseFlatEntry(cmm[K.displayName]);
+  if (name) profile.name = name as string;
+  const type = parseFlatEntry(cmm[K.type]);
+  if (type) profile.type = type as AgentProfileInput['type'];
+  const desc = parseFlatEntry(cmm[K.description]);
+  if (desc) profile.description = desc as string;
+  const payAddr = parseFlatEntry(cmm[K.payAddress]);
+  if (payAddr) profile.payAddress = payAddr as string;
+
+  // Services
+  const svcRaw = parseFlatEntry(cmm[K.services]);
+  if (svcRaw) {
+    services.push(...decodeServicesArray(svcRaw));
+  }
+
+  // Network (3 individual keys → NetworkInput)
+  const network: NetworkInput = {};
+  const caps = parseFlatEntry(cmm[K.networkCapabilities]);
+  if (caps) network.capabilities = tryParseJson(caps) as string[];
+  const eps = parseFlatEntry(cmm[K.networkEndpoints]);
+  if (eps) network.endpoints = tryParseJson(eps) as string[];
+  const protos = parseFlatEntry(cmm[K.networkProtocols]);
+  if (protos) network.protocols = tryParseJson(protos) as string[];
+  if (Object.keys(network).length > 0) profile.network = network;
+
+  // Profile (4 individual keys → ProfileInput)
+  const profileBlob: ProfileInput = {};
+  const tags = parseFlatEntry(cmm[K.profileTags]);
+  if (tags) profileBlob.tags = tryParseJson(tags) as string[];
+  const website = parseFlatEntry(cmm[K.profileWebsite]);
+  if (website) profileBlob.website = website as string;
+  const avatar = parseFlatEntry(cmm[K.profileAvatar]);
+  if (avatar) profileBlob.avatar = avatar as string;
+  const category = parseFlatEntry(cmm[K.profileCategory]);
+  if (category) profileBlob.category = category as string;
+  if (Object.keys(profileBlob).length > 0) profile.profile = profileBlob;
+
+  // Models
+  const models = parseFlatEntry(cmm[K.models]);
+  if (models) {
+    const parsed = tryParseJson(models);
+    if (Array.isArray(parsed)) profile.models = parsed as string[];
+  }
+
+  // Markup
+  const markup = parseFlatEntry(cmm[K.markup]);
+  if (markup != null) profile.markup = Number(markup);
+
+  // Dispute policy
+  const disputeRaw = parseFlatEntry(cmm[K.disputePolicy]);
+  let disputePolicy: DisputePolicy | undefined;
+  if (disputeRaw) {
+    disputePolicy = tryParseJson(disputeRaw) as DisputePolicy;
+  }
+
+  // Session params
+  const sessionRaw = parseFlatEntry(cmm[VDXF_KEYS.session.params]);
+  if (sessionRaw) {
+    const parsed = tryParseJson(sessionRaw);
+    if (typeof parsed === 'object' && parsed !== null) {
+      profile.session = parsed as AgentProfileInput['session'];
+    }
+  }
+
+  // Platform config
+  const platformRaw = parseFlatEntry(cmm[VDXF_KEYS.platform.config]);
+  if (platformRaw) {
+    const parsed = tryParseJson(platformRaw);
+    if (typeof parsed === 'object' && parsed !== null) {
+      profile.platformConfig = parsed as PlatformConfigInput;
+    }
+  }
+
+  // Workspace capability
+  const wsRaw = parseFlatEntry(cmm[VDXF_KEYS.workspace.capability]);
+  if (wsRaw) {
+    const parsed = tryParseJson(wsRaw);
+    if (typeof parsed === 'object' && parsed !== null) {
+      profile.workspaceCapability = parsed as WorkspaceCapabilityInput;
+    }
+  }
+
+  return { profile: profile as AgentProfileInput, services, disputePolicy };
+}
+
+/**
+ * Decode legacy parent-keyed contentmultimap (pre-migration on-chain data).
+ */
+function decodeLegacyContentMultimap(cmm: Record<string, unknown[]>): {
+  profile: AgentProfileInput;
+  services: ServiceInput[];
+  disputePolicy?: DisputePolicy;
 } {
   const profile: Partial<AgentProfileInput> = {};
   const session: Partial<NonNullable<AgentProfileInput['session']>> = {};
   const services: ServiceInput[] = [];
 
-  // --- Agent data ---
+  // --- Agent data (legacy parent key) ---
   const agentEntries = cmm[PARENT_KEYS.agent];
   if (agentEntries?.length) {
-    // Take the LAST outer DD (updateidentity appends, latest wins)
-    const agentData = parseOuterDD(agentEntries[agentEntries.length - 1], 'agent');
+    const agentData = parseOuterDD(agentEntries[agentEntries.length - 1], LEGACY_AGENT_REVERSE);
     if (agentData) {
       if (agentData.displayName) profile.name = agentData.displayName as string;
       if (agentData.type) profile.type = agentData.type as AgentProfileInput['type'];
       if (agentData.description) profile.description = agentData.description as string;
-      if (agentData.owner) profile.owner = agentData.owner as string;
+      // agent.owner mapped to payAddress for migration
+      if (agentData.owner) profile.payAddress = agentData.owner as string;
 
-      // Decode consolidated network blob
+      // Decode legacy consolidated network blob
       if (agentData.network) {
         const net = typeof agentData.network === 'string'
           ? JSON.parse(agentData.network) : agentData.network;
         profile.network = net as NetworkInput;
       }
 
-      // Decode consolidated profile blob
+      // Decode legacy consolidated profile blob
       if (agentData.profile) {
         const prof = typeof agentData.profile === 'string'
           ? JSON.parse(agentData.profile) : agentData.profile;
@@ -335,77 +564,34 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
 
       // Decode services JSON array
       if (agentData.services) {
-        const svcArr: Record<string, unknown>[] = typeof agentData.services === 'string'
-          ? JSON.parse(agentData.services) : agentData.services as Record<string, unknown>[];
-        for (const svc of svcArr) {
-          if (!svc.name) continue;
-          let price: number | undefined;
-          let currency: string | undefined;
-          let acceptedCurrencies: Array<{ currency: string; price: number }> | undefined;
-
-          if (svc.pricing && Array.isArray(svc.pricing)) {
-            const pricingArr = svc.pricing as Array<Record<string, unknown>>;
-            if (pricingArr.length > 0) {
-              price = Number((pricingArr[0] as Record<string, unknown>).amount ?? (pricingArr[0] as Record<string, unknown>).price);
-              currency = (pricingArr[0] as Record<string, unknown>).currency as string;
-            }
-            if (pricingArr.length > 1) {
-              acceptedCurrencies = pricingArr.slice(1).map(p => ({
-                currency: p.currency as string,
-                price: Number(p.amount ?? p.price),
-              }));
-            }
-          }
-
-          const svcInput: ServiceInput = {
-            name: svc.name as string,
-            description: svc.description as string | undefined,
-            category: svc.category as string | undefined,
-            price,
-            currency,
-            turnaround: svc.turnaround as string | undefined,
-            paymentTerms: svc.paymentTerms as ServiceInput['paymentTerms'],
-            privateMode: svc.privateMode != null ? svc.privateMode === true || svc.privateMode === 'true' : undefined,
-            sovguard: svc.sovguard != null ? svc.sovguard === true || svc.sovguard === 'true' : undefined,
-            status: svc.status as string | undefined,
-          };
-          if (acceptedCurrencies) svcInput.acceptedCurrencies = acceptedCurrencies;
-          if (svc.resolutionWindow != null) svcInput.resolutionWindow = Number(svc.resolutionWindow);
-          if (svc.refundPolicy) {
-            svcInput.refundPolicy = typeof svc.refundPolicy === 'string'
-              ? JSON.parse(svc.refundPolicy as string)
-              : svc.refundPolicy as ServiceInput['refundPolicy'];
-          }
-          services.push(svcInput);
-        }
+        services.push(...decodeServicesArray(agentData.services));
       }
 
-      // Decode models JSON array
+      // Models
       if (agentData.models) {
         const models = typeof agentData.models === 'string'
           ? JSON.parse(agentData.models) : agentData.models;
         if (Array.isArray(models)) profile.models = models as string[];
       }
 
-      // Decode markup multiplier
+      // Markup
       if (agentData.markup != null) {
         profile.markup = Number(agentData.markup);
       }
     }
   }
 
-  // --- Session data ---
+  // --- Session data (legacy parent key) ---
   const sessionEntries = cmm[PARENT_KEYS.session];
   if (sessionEntries?.length) {
-    const sessionData = parseOuterDD(sessionEntries[sessionEntries.length - 1], 'session');
+    const sessionData = parseOuterDD(sessionEntries[sessionEntries.length - 1], getReverseLookup('session'));
     if (sessionData) {
-      // Consolidated format: single params JSON object
       if (sessionData.params) {
         const params = typeof sessionData.params === 'string'
           ? JSON.parse(sessionData.params) : sessionData.params;
         Object.assign(session, params);
       }
-      // Legacy fallback: individual keys (for reading old on-chain data)
+      // Legacy individual session keys fallback
       if (sessionData.duration != null) session.duration = Number(sessionData.duration);
       if (sessionData.tokenLimit != null) session.tokenLimit = Number(sessionData.tokenLimit);
       if (sessionData.imageLimit != null) session.imageLimit = Number(sessionData.imageLimit);
@@ -418,23 +604,21 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
     }
   }
 
-  // --- Platform data (single config JSON blob) ---
+  // --- Platform data (legacy parent key) ---
   const platformEntries = cmm[PARENT_KEYS.platform];
   if (platformEntries?.length) {
-    const platformData = parseOuterDD(platformEntries[platformEntries.length - 1], 'platform');
-    if (platformData) {
-      if (platformData.config) {
-        const cfg = typeof platformData.config === 'string'
-          ? JSON.parse(platformData.config) : platformData.config;
-        profile.platformConfig = cfg as PlatformConfigInput;
-      }
+    const platformData = parseOuterDD(platformEntries[platformEntries.length - 1], getReverseLookup('platform'));
+    if (platformData?.config) {
+      const cfg = typeof platformData.config === 'string'
+        ? JSON.parse(platformData.config) : platformData.config;
+      profile.platformConfig = cfg as PlatformConfigInput;
     }
   }
 
-  // --- Workspace capability ---
+  // --- Workspace capability (legacy parent key) ---
   const workspaceEntries = cmm[PARENT_KEYS.workspace];
   if (workspaceEntries?.length) {
-    const wsData = parseOuterDD(workspaceEntries[workspaceEntries.length - 1], 'workspace');
+    const wsData = parseOuterDD(workspaceEntries[workspaceEntries.length - 1], getReverseLookup('workspace'));
     if (wsData?.capability) {
       const cap = typeof wsData.capability === 'string'
         ? JSON.parse(wsData.capability) : wsData.capability;
@@ -446,10 +630,7 @@ export function decodeContentMultimap(cmm: Record<string, unknown[]>): {
     profile.session = session as AgentProfileInput['session'];
   }
 
-  return {
-    profile: profile as AgentProfileInput,
-    services,
-  };
+  return { profile: profile as AgentProfileInput, services, disputePolicy: undefined };
 }
 
 // --- Canonical update helpers ---
@@ -469,6 +650,10 @@ export interface CanonicalIdentitySnapshot {
   contentmultimap?: Record<string, unknown[]>;
 }
 
+/**
+ * Build a flat contentmultimap from field-name -> value pairs.
+ * Each field is mapped to its VDXF_KEYS.agent i-address.
+ */
 export function buildCanonicalAgentUpdate(params: CanonicalAgentUpdateParams): Record<string, unknown> {
   const {
     fullName,
@@ -488,8 +673,8 @@ export function buildCanonicalAgentUpdate(params: CanonicalAgentUpdateParams): R
     throw new Error('primaryaddresses required');
   }
 
-  // Build nested DD contentmultimap from fields
-  const agentSubDDs: object[] = [];
+  // Build flat contentmultimap from fields
+  const contentmultimap: Record<string, unknown[]> = {};
   const K = VDXF_KEYS.agent;
 
   for (const [field, value] of Object.entries(fields)) {
@@ -501,12 +686,7 @@ export function buildCanonicalAgentUpdate(params: CanonicalAgentUpdateParams): R
     if (!iAddr) continue;
 
     const strValue = typeof value === 'string' ? value : JSON.stringify(value);
-    agentSubDDs.push(makeSubDD(iAddr, strValue));
-  }
-
-  const contentmultimap: Record<string, unknown[]> = {};
-  if (agentSubDDs.length > 0) {
-    contentmultimap[PARENT_KEYS.agent] = [makeOuterDD(agentSubDDs, PARENT_KEYS.agent)];
+    contentmultimap[iAddr] = [makeSubDD(iAddr, strValue)];
   }
 
   return {
@@ -531,7 +711,6 @@ export function verifyPublishedIdentity(params: {
   const expectedCmm = (expectedPayload.contentmultimap || {}) as Record<string, unknown[]>;
   const onchain = identity.contentmultimap || {};
 
-  // For nested DD format, verify parent keys are present and have entries
   for (const key of Object.keys(expectedCmm)) {
     if (!onchain[key] || (onchain[key] as unknown[]).length === 0) {
       errors.push(`missing key ${key}`);
@@ -567,8 +746,8 @@ export function buildUpdateIdentityCommand(payload: Record<string, unknown>, cha
 // --- Job completion helpers ---
 
 /**
- * Build contentmultimap additions for job completion (read-merge-write pattern).
- * Creates outer DDs for job record, optional review record, and optional workspace attestation.
+ * Build flat contentmultimap additions for job completion (read-merge-write pattern).
+ * Each record is its own top-level key.
  */
 export function buildJobCompletionAdditions(params: {
   jobRecord: JobRecordInput;
@@ -577,17 +756,14 @@ export function buildJobCompletionAdditions(params: {
 }): Record<string, unknown[]> {
   const additions: Record<string, unknown[]> = {};
 
-  const jobSubDDs = [makeSubDD(VDXF_KEYS.job.record, JSON.stringify(params.jobRecord))];
-  additions[PARENT_KEYS.job] = [makeOuterDD(jobSubDDs, PARENT_KEYS.job)];
+  additions[VDXF_KEYS.job.record] = [makeSubDD(VDXF_KEYS.job.record, JSON.stringify(params.jobRecord))];
 
   if (params.reviewRecord) {
-    const reviewSubDDs = [makeSubDD(VDXF_KEYS.review.record, JSON.stringify(params.reviewRecord))];
-    additions[PARENT_KEYS.review] = [makeOuterDD(reviewSubDDs, PARENT_KEYS.review)];
+    additions[VDXF_KEYS.review.record] = [makeSubDD(VDXF_KEYS.review.record, JSON.stringify(params.reviewRecord))];
   }
 
   if (params.workspaceAttestation) {
-    const wsSubDDs = [makeSubDD(VDXF_KEYS.workspace.attestation, JSON.stringify(params.workspaceAttestation))];
-    additions[PARENT_KEYS.workspace] = [makeOuterDD(wsSubDDs, PARENT_KEYS.workspace)];
+    additions[VDXF_KEYS.workspace.attestation] = [makeSubDD(VDXF_KEYS.workspace.attestation, JSON.stringify(params.workspaceAttestation))];
   }
 
   return additions;
