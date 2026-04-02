@@ -47,14 +47,14 @@ export interface DataPolicyInput {
   requireDeletion?: boolean;
 }
 
-/** agent.network JSON blob */
+/** Network config — flattened to 3 individual VDXF keys (capabilities, endpoints, protocols) */
 export interface NetworkInput {
   capabilities?: string[];
   endpoints?: string[];
   protocols?: string[];
 }
 
-/** agent.profile JSON blob */
+/** Profile metadata — flattened to 4 individual VDXF keys (tags, website, avatar, category) */
 export interface ProfileInput {
   tags?: string[];
   website?: string;
@@ -117,20 +117,41 @@ export interface AgentProfileInput {
   name: string;
   type: 'autonomous' | 'assisted' | 'hybrid' | 'tool';
   description: string;
-  owner?: string;
-  /** Consolidated network blob → agent.network */
+  /** Payment address (i-address or R-address) → agent.payaddress */
+  payAddress?: string;
+  /** Network config → 3 flat keys (capabilities, endpoints, protocols) */
   network?: NetworkInput;
-  /** Consolidated profile blob → agent.profile */
+  /** Profile metadata → 4 flat keys (tags, website, avatar, category) */
   profile?: ProfileInput;
   session?: SessionInput;
-  /** Consolidated platform config → platform.config */
+  /** Platform config → platform.config */
   platformConfig?: PlatformConfigInput;
-  /** Workspace capability declaration → workspace.capability */
+  /** Workspace capability → workspace.capability */
   workspaceCapability?: WorkspaceCapabilityInput;
-  /** LLM models used by this agent → agent.models (JSON array of strings) */
+  /** LLM models → agent.models (JSON array) */
   models?: string[];
   /** Pricing markup multiplier (1-50) → agent.markup */
   markup?: number;
+}
+
+/** Dispute resolution policy — published on-chain under service.dispute VDXF key */
+export interface DisputePolicy {
+  defaultAction: 'rework' | 'refund' | 'reject';
+  maxRefundPercent: number;
+  maxReworkCycles: number;
+  reworkBudgetPercent: number;
+  escalateAfter: 'max_rework' | '2nd_dispute' | 'never';
+  systemCrashRefund: number;
+}
+
+/** Cost breakdown stored on-chain alongside service pricing */
+export interface CostBreakdown {
+  model: string;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  rawCost: number;
+  apiCalls: number;
+  markup: number;
 }
 
 export interface ServiceInput {
@@ -146,6 +167,7 @@ export interface ServiceInput {
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
   resolutionWindow?: number;
   refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
+  costBreakdown?: CostBreakdown;
   status?: string;
 }
 
@@ -239,7 +261,7 @@ async function resolveProfile(mode: FinalizeMode, profile: AgentProfileInput | u
 
   // Optional fields
   const category = await prompt('Category (optional)', 'general');
-  const owner = await prompt('Owner VerusID (optional)');
+  const payAddress = await prompt('Payment address (i-address or R-address, optional)');
   const tagsRaw = await prompt('Tags (comma-separated, max 20, optional)');
   const website = await prompt('Website URL (optional)');
   const avatar = await prompt('Avatar image URL (optional)');
@@ -353,7 +375,7 @@ async function resolveProfile(mode: FinalizeMode, profile: AgentProfileInput | u
   }
 
   const result: AgentProfileInput = { name, type, description };
-  if (owner) result.owner = owner;
+  if (payAddress) result.payAddress = payAddress;
 
   // Consolidated network blob
   const network: NetworkInput = {};

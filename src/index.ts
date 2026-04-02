@@ -30,6 +30,7 @@ export type { Bounty, BountyApplication, PostBountyData, BountySearchParams } fr
 export type { Notification } from './client/index.js';
 export type { DisputeDetail, DisputeMetrics } from './client/index.js';
 export type { SubmitReviewData } from './client/index.js';
+export type { DisputePolicy, CostBreakdown } from './client/index.js';
 
 // Webhook verification
 export { verifyWebhookSignature, generateWebhookSecret } from './webhook/verify.js';
@@ -47,7 +48,7 @@ export { loginWithConsent, type LoginConsentResult } from './auth/login-consent.
 export { buildIdentityUpdateTx, type IdentityUpdateParams } from './identity/update.js';
 
 // Transaction builder
-export { buildPayment, selectUtxos, wifToAddress, wifToPubkey, type PaymentParams } from './tx/payment.js';
+export { buildPayment, buildMultiPayment, selectUtxos, wifToAddress, wifToPubkey, buildP2IDScript, isIAddress, type PaymentParams, type MultiPaymentParams, type PaymentOutput } from './tx/payment.js';
 
 // Safety — canary tokens + communication policy
 export { generateCanary, checkForCanaryLeak, protectSystemPrompt, type CanaryConfig } from './safety/canary.js';
@@ -57,7 +58,7 @@ export { POLICY_LABELS, getDefaultPolicy, type CommunicationPolicy, type AgentSa
 export { ChatClient, type ChatClientConfig, type IncomingMessage, type MessageHandler } from './chat/index.js';
 
 // Workspace — agent-side relay connection
-export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef, type WorkspaceStats, type WorkspaceStatus } from './workspace/index.js';
+export { WorkspaceClient, type WorkspaceClientConfig, type WorkspaceToolDef, type WorkspaceStats, type WorkspaceStatus, type WorkspaceTokenResponse } from './workspace/index.js';
 export type { ChatMessage, ChatFile } from './chat/index.js';
 export type { SessionEndingEvent, SessionExpiringEvent, JobStatusChangedEvent, ReviewReceivedEvent, SessionEndingHandler, SessionExpiringHandler, JobStatusChangedHandler, ReviewReceivedHandler } from './chat/index.js';
 
@@ -171,3 +172,4 @@ export {
 
 // Buyer session (agent-to-agent)
 export { BuyerSession, type BuyerSessionConfig } from './buyer/session.js';
+export { BuyerWorkspace, type BuyerWorkspaceConfig, type BuyerWorkspaceStats } from './buyer/workspace.js';

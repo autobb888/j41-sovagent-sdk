@@ -6,9 +6,10 @@
 import type { DeletionAttestation } from '../privacy/attestation.js';
 import type { SessionInput } from '../onboarding/validation.js';
 import type { DataPolicyInput } from '../onboarding/finalize.js';
+export type { DisputePolicy, CostBreakdown } from '../onboarding/finalize.js';
 import { keypairFromWIF } from '../identity/keypair.js';
 import { signMessage as verusSignMessage } from '../identity/signer.js';
-import type { WorkspaceStatus } from '../workspace/index.js';
+import type { WorkspaceStatus, WorkspaceTokenResponse } from '../workspace/index.js';
 
 export interface J41ClientConfig {
   /** J41 API base URL (e.g. https://api.junction41.io) */
@@ -421,9 +422,11 @@ export class J41Client {
     return res;
   }
 
-  /** Accept a job */
-  async acceptJob(jobId: string, signature: string, timestamp: number): Promise<Job> {
-    const res = await this.request<{ data: Job }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/accept`, { signature, timestamp });
+  /** Accept a job. Pass paymentAddress so the backend stores where buyer should pay. */
+  async acceptJob(jobId: string, signature: string, timestamp: number, paymentAddress?: string): Promise<Job> {
+    const body: Record<string, unknown> = { signature, timestamp };
+    if (paymentAddress) body.paymentAddress = paymentAddress;
+    const res = await this.request<{ data: Job }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/accept`, body);
     return res.data;
   }
 
@@ -999,6 +1002,18 @@ export class J41Client {
     return res.data;
   }
 
+  /** Get current privacy tier (standard/private/sovereign) */
+  async getPrivacyTier(): Promise<{ tier: string; label: string; verifiedAt?: string }> {
+    const res = await this.request<{ data: { tier: string; label: string; verifiedAt?: string } }>('GET', '/v1/me/privacy');
+    return res.data;
+  }
+
+  /** Set privacy tier */
+  async setPrivacyTier(tier: 'standard' | 'private' | 'sovereign'): Promise<{ tier: string; label: string }> {
+    const res = await this.request<{ data: { tier: string; label: string } }>('POST', '/v1/me/privacy', { tier });
+    return res.data;
+  }
+
   // ------------------------------------------
   // Deletion attestation endpoints
   // ------------------------------------------
@@ -1223,7 +1238,19 @@ export class J41Client {
 
   /** Get workspace session status for a job */
   async getWorkspaceStatus(jobId: string): Promise<WorkspaceStatus> {
-    const res = await this.request<{ data: WorkspaceStatus }>('GET', `/v1/workspace/${jobId}`);
+    const res = await this.request<{ data: WorkspaceStatus }>('GET', `/v1/jailbox/${jobId}`);
+    return res.data;
+  }
+
+  /**
+   * Create a buyer workspace session for a job. Returns the workspace UID.
+   * Uses POST /v1/jailbox/{jobId}/token (same endpoint the dashboard uses).
+   * Returns 409 if workspace already exists for this job.
+   */
+  async initBuyerWorkspace(jobId: string): Promise<WorkspaceTokenResponse> {
+    const res = await this.request<{ data: WorkspaceTokenResponse }>(
+      'POST', `/v1/jailbox/${encodeURIComponent(jobId)}/token`
+    );
     return res.data;
   }
 
@@ -1273,6 +1300,17 @@ export class J41Client {
     return res.data;
   }
 
+  /** Get bounties posted by or applied to by the authenticated agent */
+  async getMyBounties(params?: { role?: 'poster' | 'applicant'; status?: string; limit?: number; offset?: number }): Promise<{ data: Bounty[]; meta: PaginationMeta }> {
+    const query = new URLSearchParams();
+    if (params?.role) query.set('role', params.role);
+    if (params?.status) query.set('status', params.status);
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.offset != null) query.set('offset', String(params.offset));
+    const qs = query.toString();
+    return this.request<{ data: Bounty[]; meta: PaginationMeta }>('GET', `/v1/me/bounties${qs ? `?${qs}` : ''}`);
+  }
+
   // ------------------------------------------
   // Notification endpoints
   // ------------------------------------------
@@ -1306,10 +1344,10 @@ export class J41Client {
     return this.request<{ status: string; txid: string }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/dispute/refund-txid`, { txid });
   }
 
-  /** Get public dispute metrics for an agent */
+  /** Get public dispute metrics for an agent (from transparency profile) */
   async getDisputeMetrics(verusId: string): Promise<DisputeMetrics> {
-    const res = await this.request<{ data: DisputeMetrics }>('GET', `/v1/agents/${encodeURIComponent(verusId)}/dispute-metrics`);
-    return res.data;
+    const res = await this.request<{ data: { computed?: { disputes?: DisputeMetrics } } }>('GET', `/v1/agents/${encodeURIComponent(verusId)}/transparency`);
+    return res.data?.computed?.disputes || {} as DisputeMetrics;
   }
 
   // ------------------------------------------
