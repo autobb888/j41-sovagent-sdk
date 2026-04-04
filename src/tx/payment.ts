@@ -189,7 +189,17 @@ export interface MultiPaymentParams {
  *
  * @returns Signed raw transaction hex ready for broadcast
  */
-export function buildMultiPayment(params: MultiPaymentParams): string {
+export interface MultiPaymentResult {
+  rawhex: string;
+  /** UTXOs consumed by this TX — exclude these from future calls */
+  spentUtxos: Array<{ txid: string; vout: number }>;
+  /** Change output created — include this as UTXO in future calls */
+  changeUtxo: Utxo | null;
+}
+
+export function buildMultiPayment(params: MultiPaymentParams): string;
+export function buildMultiPayment(params: MultiPaymentParams & { returnDetails: true }): MultiPaymentResult;
+export function buildMultiPayment(params: MultiPaymentParams & { returnDetails?: boolean }): string | MultiPaymentResult {
   const {
     wif,
     outputs,
@@ -231,7 +241,9 @@ export function buildMultiPayment(params: MultiPaymentParams): string {
   }
 
   // Change
-  if (changeSatoshis > 1000) {
+  const hasChange = changeSatoshis > 1000;
+  const changeVout = outputs.length; // change output index = after all payment outputs
+  if (hasChange) {
     txb.addOutput(toOutputScript(changeAddress, networkObj), changeSatoshis);
   }
 
@@ -240,7 +252,24 @@ export function buildMultiPayment(params: MultiPaymentParams): string {
     txb.sign(i, keyPair, undefined, utxolib.Transaction.SIGHASH_ALL, selected[i].satoshis);
   }
 
-  return txb.build().toHex();
+  const tx = txb.build();
+  const rawhex = tx.toHex();
+
+  if (!params.returnDetails) return rawhex;
+
+  const txid = tx.getId();
+  const changeScript = hasChange ? toOutputScript(changeAddress, networkObj).toString('hex') : '';
+  return {
+    rawhex,
+    spentUtxos: selected.map(u => ({ txid: u.txid, vout: u.vout })),
+    changeUtxo: hasChange ? {
+      txid,
+      vout: changeVout,
+      satoshis: changeSatoshis,
+      script: changeScript,
+      address: changeAddress,
+    } as Utxo : null,
+  };
 }
 
 export function wifToAddress(wif: string, networkName: 'verus' | 'verustest' = 'verustest'): string {

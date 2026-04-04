@@ -1883,30 +1883,56 @@ export class J41Agent extends EventEmitter {
    * Send to multiple addresses in a single TX (e.g. agent payment + platform fee).
    * @returns txid
    */
+  // Track spent UTXOs and unconfirmed change for UTXO chaining (multiple TXs per block)
+  private _spentUtxos: Set<string> = new Set(); // "txid:vout" keys
+  private _pendingChange: any[] = []; // unconfirmed change UTXOs from our own TXs
+
   async sendMultiPayment(outputs: Array<{ address: string; amount: number }>): Promise<string> {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
     await this.login();
 
     const utxoResp = await this._client.getUtxos();
-    let utxos = utxoResp.utxos || utxoResp;
-    if (!utxos || !Array.isArray(utxos) || utxos.length === 0) {
-      throw new Error('No UTXOs available — wallet is empty');
+    let apiUtxos = (utxoResp.utxos || utxoResp) as any[];
+    if (!Array.isArray(apiUtxos)) apiUtxos = [];
+    apiUtxos = apiUtxos.filter((u: any) => u.satoshis > 0);
+
+    // Merge API UTXOs + pending change, excluding already-spent ones
+    const allUtxos = [
+      ...apiUtxos.filter((u: any) => !this._spentUtxos.has(`${u.txid}:${u.vout}`)),
+      ...this._pendingChange.filter((u: any) => !this._spentUtxos.has(`${u.txid}:${u.vout}`)),
+    ];
+
+    if (allUtxos.length === 0) {
+      throw new Error('No UTXOs available — wallet is empty or all outputs are unconfirmed');
     }
-    utxos = utxos.filter((u: any) => u.satoshis > 0);
 
     const { buildMultiPayment, wifToAddress } = await import('./tx/payment.js');
     const changeAddress = wifToAddress(this.wif, this.networkType);
 
-    const rawhex = buildMultiPayment({
+    const result = (buildMultiPayment as any)({
       wif: this.wif,
       outputs,
-      utxos,
+      utxos: allUtxos,
       changeAddress,
       network: this.networkType,
+      returnDetails: true,
     });
 
-    const result = await this._client.broadcast(rawhex);
-    const txid = typeof result === 'string' ? result : result.txid || JSON.stringify(result);
+    const broadcastResult = await this._client.broadcast(result.rawhex);
+    const txid = typeof broadcastResult === 'string' ? broadcastResult : broadcastResult.txid || JSON.stringify(broadcastResult);
+
+    // Track spent UTXOs so they're excluded from future calls
+    for (const spent of result.spentUtxos) {
+      this._spentUtxos.add(`${spent.txid}:${spent.vout}`);
+    }
+
+    // Track change output so it can be spent in the next TX (UTXO chaining)
+    if (result.changeUtxo) {
+      // Use the real broadcast txid (may differ from computed txid for some networks)
+      result.changeUtxo.txid = txid;
+      this._pendingChange.push(result.changeUtxo);
+    }
+
     const totalAmount = outputs.reduce((s, o) => s + o.amount, 0);
     this.emit('payment:sent', { txid, outputs, totalAmount });
     return txid;
