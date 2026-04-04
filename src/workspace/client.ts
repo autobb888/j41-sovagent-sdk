@@ -1,7 +1,7 @@
 /**
  * WorkspaceClient — agent-side workspace relay connection
  *
- * Connects to the platform's /workspace Socket.IO namespace.
+ * Connects to the platform's /jailbox Socket.IO namespace.
  * Sends MCP tool calls (read_file, write_file, list_directory)
  * and receives results from the buyer's CLI.
  */
@@ -65,17 +65,51 @@ export interface WorkspaceClientConfig {
 }
 
 export interface WorkspaceStatus {
+  /** Workspace session UUID */
+  id: string;
   jobId: string;
-  status: 'pending' | 'active' | 'completed' | 'aborted';
+  status: 'pending' | 'active' | 'paused' | 'disconnected' | 'completed' | 'aborted';
   agentConnected: boolean;
   buyerConnected: boolean;
+  mode: 'supervised' | 'standard';
+  permissions: { read: boolean; write: boolean };
   createdAt: string;
   updatedAt: string;
+  connectedAt?: string;
+  disconnectedAt?: string;
+  completedAt?: string;
+  /** Operation counts */
+  counts?: {
+    reads: number;
+    writes: number;
+    list_dirs: number;
+    blocked: number;
+  };
+  /** Pending write approvals (supervised mode) */
+  pendingApprovals?: Array<{ id: string; path: string; sizeBytes: number }>;
+  /** Recently blocked operations */
+  recentBlocked?: Array<{ path: string; reason: string; timestamp: string }>;
+  /** Connect command for buyer CLI (when status is pending) */
+  connectCommand?: string;
+  /** Reconnect token (when status is disconnected) */
+  reconnectToken?: string;
+  /** Deletion attestation (when status is completed) */
+  attestation?: Record<string, any>;
+  /** @deprecated Use counts instead */
   stats?: {
     filesRead: number;
     filesWritten: number;
     listDirectoryCalls: number;
   };
+}
+
+export interface WorkspaceTokenResponse {
+  sessionId: string;
+  workspaceUid: string;
+  command: string;
+  installCommand: string;
+  mode: 'supervised' | 'standard';
+  permissions: { read: boolean; write: boolean };
 }
 
 export interface WorkspaceToolDef {
@@ -131,7 +165,7 @@ export class WorkspaceClient {
     const tokenTimer = setTimeout(() => tokenController.abort(), 15_000);
     let tokenRes: Response;
     try {
-      tokenRes = await fetch(`${this.config.apiUrl}/v1/workspace/${jobId}/connect-token`, {
+      tokenRes = await fetch(`${this.config.apiUrl}/v1/jailbox/${jobId}/connect-token`, {
         headers: {
           'Cookie': `verus_session=${this.config.getSessionToken()}`,
         },
@@ -181,11 +215,11 @@ export class WorkspaceClient {
     // Step 2: Extract origin from wsUrl (strip /ws path if present)
     const origin = wsUrl.replace(/\/ws\/?$/, '');
 
-    // Step 3: Connect Socket.IO to /workspace namespace
+    // Step 3: Connect Socket.IO to /jailbox namespace
     return new Promise<void>((resolve, reject) => {
       let settled = false;
 
-      this.socket = io(origin + '/workspace', {
+      this.socket = io(origin + '/jailbox', {
         path: '/ws',
         auth: { type: 'agent', token },
         transports: ['websocket', 'polling'],
@@ -228,7 +262,7 @@ export class WorkspaceClient {
       });
 
       // Status changes
-      this.socket.on('workspace:status_changed', (data: { status: string; reason?: string }) => {
+      this.socket.on('jailbox:status_changed', (data: { status: string; reason?: string }) => {
         if (data.status === 'active' && !settled) {
           settled = true;
           resolve(); // Buyer connected — workspace is ready
@@ -242,7 +276,7 @@ export class WorkspaceClient {
       });
 
       // Exclusion list from relay — files the buyer's SovGuard has blocked
-      this.socket.on('workspace:exclusions', (data: { excludedFiles: string[] }) => {
+      this.socket.on('jailbox:exclusions', (data: { excludedFiles: string[] }) => {
         this._excludedFiles = data.excludedFiles || [];
       });
 
@@ -340,7 +374,7 @@ export class WorkspaceClient {
 
   /** Signal to the buyer that the agent's work is complete */
   signalDone(): void {
-    this.socket?.emit('workspace:agent_done');
+    this.socket?.emit('jailbox:agent_done');
   }
 
   /** Get workspace usage stats for attestation */
@@ -428,7 +462,7 @@ export class WorkspaceClient {
   /** Send keepalive ping to prevent relay idle timeout */
   ping(): void {
     if (this.socket && this._connected) {
-      this.socket.emit('workspace:ping');
+      this.socket.emit('jailbox:ping');
     }
   }
 

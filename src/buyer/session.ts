@@ -8,6 +8,7 @@
 
 import type { J41Agent } from '../agent.js';
 import type { Job } from '../client/index.js';
+import { BuyerWorkspace, type BuyerWorkspaceConfig } from './workspace.js';
 
 export interface BuyerSessionConfig {
   /** The buyer agent instance (authenticated) */
@@ -38,6 +39,7 @@ export class BuyerSession {
   private _lastActivity = Date.now();
   private _idleTimer: ReturnType<typeof setInterval> | null = null;
   private _messageHandler: ((jobId: string, msg: any) => void) | null = null;
+  private _workspace: BuyerWorkspace | null = null;
 
   constructor(config: BuyerSessionConfig) {
     this.agent = config.agent;
@@ -57,37 +59,40 @@ export class BuyerSession {
 
     console.log(`[BuyerSession] Job created: ${this.job.id}`);
 
-    // Pay
+    // Pay — dual output TX (agent + platform fee in one transaction)
     const payAddr = this.job.payment?.address;
     if (!payAddr) {
       throw new Error('No payment address on job — backend may not have resolved seller R-address');
     }
 
-    const txid = await this.agent.sendCurrency(payAddr, this.config.amount);
-    console.log(`[BuyerSession] Payment sent: ${txid}`);
-
-    await (this.agent as any)._client.recordPayment(this.job.id, txid);
-    console.log(`[BuyerSession] Payment recorded`);
-
-    // Platform fee — retry in background after block confirms
     const feeAddr = this.job.payment?.platformFeeAddress;
     const feeAmt = this.job.payment?.feeAmount;
+
+    const outputs: Array<{ address: string; amount: number }> = [
+      { address: payAddr, amount: this.config.amount },
+    ];
     if (feeAddr && feeAmt && feeAmt > 0) {
-      this._sendFeeInBackground(feeAddr, feeAmt);
+      outputs.push({ address: feeAddr, amount: feeAmt });
     }
+
+    const txid = await this.agent.sendMultiPayment(outputs);
+    console.log(`[BuyerSession] Dual payment sent: ${txid}`);
+
+    await this.agent.client.recordPaymentCombined(this.job.id, txid);
+    console.log(`[BuyerSession] Payment + fee recorded`);
 
     // Wait for payment verification + job to go in_progress
     console.log(`[BuyerSession] Waiting for payment verification...`);
     const maxWaitMs = 15 * 60 * 1000; // 15 min max (6 block confirmations + watcher cycle)
     const startWait = Date.now();
     while (Date.now() - startWait < maxWaitMs) {
-      const check = await (this.agent as any)._client.getJob(this.job.id);
+      const check = await this.agent.client.getJob(this.job.id);
       if (check.status === 'in_progress') {
         this.job = check;
         console.log(`[BuyerSession] Job in_progress — seller is online`);
         break;
       }
-      if (check.status === 'cancelled' || check.status === 'failed') {
+      if (check.status === 'cancelled' || (check.status as string) === 'failed') {
         throw new Error(`Job ${check.status}`);
       }
       await new Promise(r => setTimeout(r, 15000)); // check every 15s
@@ -103,7 +108,7 @@ export class BuyerSession {
     // Listen for seller messages
     this._messageHandler = (jobId: string, msg: any) => {
       if (jobId !== this.job?.id) return;
-      if (msg.senderVerusId === (this.agent as any).iAddress) return; // skip own messages
+      if (msg.senderVerusId === this.agent.address) return; // skip own messages
       this._lastActivity = Date.now();
       this.config.onMessage?.(msg.content, { senderVerusId: msg.senderVerusId, jobId });
     };
@@ -152,10 +157,56 @@ export class BuyerSession {
     });
   }
 
+  /** Connect the buyer's project directory as a workspace for the seller agent */
+  async connectWorkspace(projectDir: string, opts?: {
+    permissions?: { read: boolean; write: boolean };
+    autoApproveWrites?: boolean;
+    onWrite?: (path: string, content: string) => boolean | Promise<boolean>;
+    onMcpCall?: (tool: string, path: string) => void;
+    /** Override UID for manual testing (if backend endpoint not deployed yet) */
+    uid?: string;
+  }): Promise<BuyerWorkspace> {
+    if (!this.job || !this._active) throw new Error('Session not active');
+
+    this._workspace = new BuyerWorkspace({
+      agent: this.agent,
+      jobId: this.job.id,
+      projectDir,
+      permissions: opts?.permissions ?? { read: true, write: true },
+      autoApproveWrites: opts?.autoApproveWrites ?? true,
+      onWrite: opts?.onWrite,
+      onStatusChanged: (status, data) => {
+        if (status === 'agent_done') {
+          this._lastActivity = Date.now();
+        }
+        if (status === 'disconnected' || status === 'aborted' || status === 'completed') {
+          this._workspace = null;
+        }
+      },
+      onMcpCall: opts?.onMcpCall,
+      uid: opts?.uid,
+    });
+
+    await this._workspace.connect();
+    console.log(`[BuyerSession] Workspace connected — serving ${projectDir}`);
+    return this._workspace;
+  }
+
+  /** Get the current workspace (null if not connected) */
+  get workspace(): BuyerWorkspace | null {
+    return this._workspace;
+  }
+
   /** End the session and request delivery */
   async endSession(reason = 'buyer-completed'): Promise<void> {
     if (!this.job || !this._active) return;
     this._active = false;
+
+    // Disconnect workspace first
+    if (this._workspace) {
+      this._workspace.disconnect();
+      this._workspace = null;
+    }
 
     if (this._idleTimer) {
       clearInterval(this._idleTimer);
@@ -163,7 +214,7 @@ export class BuyerSession {
     }
 
     try {
-      await (this.agent as any)._client.requestEndSession(this.job.id, reason);
+      await this.agent.client.requestEndSession(this.job.id, reason);
       console.log(`[BuyerSession] Session ended: ${reason}`);
     } catch (e: any) {
       console.warn(`[BuyerSession] End session failed: ${e.message}`);
@@ -172,23 +223,9 @@ export class BuyerSession {
     this.config.onSessionEnd?.(reason);
   }
 
-  /** Send platform fee — retries after blocks until successful */
-  private async _sendFeeInBackground(feeAddr: string, feeAmt: number): Promise<void> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      // Wait for block (60s on testnet, 60s on mainnet)
-      await new Promise(r => setTimeout(r, 65000));
-      if (!this._active && attempt > 0) return;
-      try {
-        const feeTxid = await this.agent.sendCurrency(feeAddr, feeAmt);
-        // Record fee txid with the platform
-        await (this.agent as any)._client.recordPlatformFee(this.job!.id, feeTxid);
-        console.log(`[BuyerSession] Platform fee sent + recorded: ${feeTxid}`);
-        return;
-      } catch (e: any) {
-        console.warn(`[BuyerSession] Fee attempt ${attempt + 1}/5: ${e.message}`);
-      }
-    }
-    console.warn(`[BuyerSession] Platform fee failed after 5 attempts`);
+  /** @deprecated — dual payment now sends both in one TX */
+  private async _sendFeeInBackground(_feeAddr: string, _feeAmt: number): Promise<void> {
+    // No-op: dual payment handles agent + platform fee in a single TX
   }
 
   /** Get the job object */

@@ -31,6 +31,8 @@ export interface IdentityUpdateParams {
   revocationauthority?: string;
   /** New recovery authority i-address (if changing) */
   recoveryauthority?: string;
+  /** Clear existing contentmultimap before applying additions (for migration) */
+  clearContentmultimap?: boolean;
 }
 
 /**
@@ -71,6 +73,7 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
     fee = DEFAULT_FEE,
     revocationauthority,
     recoveryauthority,
+    clearContentmultimap = false,
   } = params;
 
   const networkObj = network === 'verustest'
@@ -88,17 +91,17 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
     throw new Error('At least one UTXO is required to fund the transaction fee');
   }
 
-  // 1. Merge VDXF additions into current identity's contentmultimap
+  // 1. Build contentmultimap (clear existing or merge)
   const currentCmm: Record<string, unknown[]> = {};
 
-  // Copy existing contentmultimap
-  if (identityData.identity.contentmultimap) {
+  // Copy existing contentmultimap (unless clearing for migration)
+  if (!clearContentmultimap && identityData.identity.contentmultimap) {
     for (const [key, values] of Object.entries(identityData.identity.contentmultimap)) {
       currentCmm[key] = Array.isArray(values) ? [...values] : [values];
     }
   }
 
-  // Merge new VDXF data (replace existing keys, add new ones)
+  // Apply VDXF data (replace existing keys, add new ones)
   for (const [key, values] of Object.entries(vdxfAdditions)) {
     currentCmm[key] = [...values];
   }

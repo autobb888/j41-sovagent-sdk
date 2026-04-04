@@ -32,7 +32,7 @@ import { generateCanary, checkForCanaryLeak, type CanaryConfig } from './safety/
 import { randomUUID } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
 import { buildIdentityUpdateTx } from './identity/update.js';
-import { VDXF_KEYS, PARENT_KEYS, DATA_DESCRIPTOR_KEY, makeSubDD } from './onboarding/vdxf.js';
+import { VDXF_KEYS, makeSubDD } from './onboarding/vdxf.js';
 import { WorkspaceClient } from './workspace/index.js';
 
 /**
@@ -445,12 +445,14 @@ export class J41Agent extends EventEmitter {
       name: agentData.name,
       type: agentData.type,
       description: agentData.description,
-      owner: agentData.owner,
+      payAddress: agentData.payAddress,
       network: agentData.network,
       profile: agentData.profile,
       session: agentData.session,
       platformConfig: agentData.platformConfig,
       workspaceCapability: agentData.workspaceCapability,
+      models: agentData.models,
+      markup: agentData.markup,
     };
 
     const contentmultimap = buildAgentContentMultimap(profile);
@@ -610,15 +612,7 @@ export class J41Agent extends EventEmitter {
       await this.login();
 
       const vdxfAdditions: Record<string, unknown[]> = {};
-      const agentSubDDs = [makeSubDD(VDXF_KEYS.agent.status, status)];
-      vdxfAdditions[PARENT_KEYS.agent] = [{
-        [DATA_DESCRIPTOR_KEY]: {
-          version: 1,
-          flags: 32,
-          objectdata: agentSubDDs,
-          label: PARENT_KEYS.agent,
-        },
-      }];
+      vdxfAdditions[VDXF_KEYS.agent.status] = [makeSubDD(VDXF_KEYS.agent.status, status)];
 
       const { data: identityData } = await this._client.getIdentityRaw();
       const utxoResp = await this._client.getUtxos();
@@ -1114,13 +1108,47 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
+   * Update the on-chain agent.status VDXF key ('active' or 'inactive').
+   * Builds and broadcasts an identity update TX.
+   */
+  async setOnChainStatus(status: 'active' | 'inactive'): Promise<string> {
+    if (!this.wif || !this.iAddress) throw new Error('WIF and i-address required');
+    await this.login();
+
+    const [{ data: identityData }, utxoData] = await Promise.all([
+      this._client.getIdentityRaw(),
+      this._client.getUtxos(),
+    ]);
+
+    if (!identityData.prevOutput) throw new Error('Identity not found on-chain');
+    const utxos = (utxoData.utxos || []).filter((u: any) => u.satoshis > 0);
+    if (utxos.length === 0) throw new Error('No UTXOs available for TX fee');
+
+    const vdxfAdditions: Record<string, unknown[]> = {
+      [VDXF_KEYS.agent.status]: [makeSubDD(VDXF_KEYS.agent.status, status)],
+    };
+
+    const signedTxHex = buildIdentityUpdateTx({
+      wif: this.wif,
+      identityData,
+      utxos,
+      vdxfAdditions,
+      network: this.networkType,
+    });
+
+    const result = await this._client.broadcast(signedTxHex);
+    console.log(`[J41] On-chain status → ${status} (txid: ${result.txid})`);
+    this.emit('status:changed', { status, txid: result.txid });
+    return result.txid;
+  }
+
+  /**
    * Accept a review from the inbox and update identity on-chain.
    * Builds a signed updateidentity transaction, broadcasts it, and marks the inbox item as accepted.
    */
   async acceptReview(inboxId: string): Promise<void> {
     if (!this.wif || !this.iAddress) {
-      console.error(`[J41] Cannot accept review ${inboxId}: WIF key and i-address required`);
-      return;
+      throw new Error(`Cannot accept review ${inboxId}: WIF key and i-address required`);
     }
 
     try {
@@ -1138,31 +1166,27 @@ export class J41Agent extends EventEmitter {
       ]);
 
       if (!identityData.prevOutput) {
-        console.error(`[J41] Cannot accept review: identity previous output not found`);
-        return;
+        throw new Error(`Cannot accept review ${inboxId}: identity previous output not found — identity may not be on-chain yet`);
       }
 
       if (!utxoData.utxos || utxoData.utxos.length === 0) {
-        console.error(`[J41] Cannot accept review: no UTXOs available for fee`);
-        return;
+        throw new Error(`Cannot accept review ${inboxId}: no UTXOs available for TX fee — fund the agent wallet`);
       }
 
       // 3. Build nested DD VDXF additions from the inbox item's review data
       const reviewKeys = VDXF_KEYS.review;
       const vdxfAdditions: Record<string, unknown[]> = {};
 
-      // Check if vdxfData is already in nested DD format (has parent key)
-      const hasNestedDD = inboxItem.vdxfData &&
-        Object.keys(inboxItem.vdxfData).some((k: string) => k === PARENT_KEYS.review);
-      if (hasNestedDD) {
-        // Use pre-computed nested DD data from the inbox item
+      // Check if vdxfData is already formatted (flat or legacy)
+      if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
+        // Use pre-computed VDXF data from the inbox item
         for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
           if (value != null) {
             vdxfAdditions[key] = Array.isArray(value) ? value : [value];
           }
         }
       } else {
-        // Build consolidated review.record JSON blob
+        // Build review.record as flat key
         const reviewRecord: Record<string, unknown> = {
           timestamp: Math.floor(Date.now() / 1000),
         };
@@ -1172,16 +1196,7 @@ export class J41Agent extends EventEmitter {
         if (inboxItem.message) reviewRecord.message = inboxItem.message;
         if (inboxItem.rating != null) reviewRecord.rating = inboxItem.rating;
 
-        const subDDs: object[] = [makeSubDD(reviewKeys.record, JSON.stringify(reviewRecord))];
-
-        vdxfAdditions[PARENT_KEYS.review] = [{
-          [DATA_DESCRIPTOR_KEY]: {
-            version: 1,
-            flags: 32,
-            objectdata: subDDs,
-            label: PARENT_KEYS.review,
-          },
-        }];
+        vdxfAdditions[reviewKeys.record] = [makeSubDD(reviewKeys.record, JSON.stringify(reviewRecord))];
       }
 
       // 4. Build and sign the identity update transaction
@@ -1652,6 +1667,65 @@ export class J41Agent extends EventEmitter {
     return job;
   }
 
+  /**
+   * Mark a job as completed (buyer confirms work is satisfactory).
+   * Signs the completion message automatically.
+   */
+  async completeJob(jobId: string): Promise<Job> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    await this.login();
+
+    const jobData = await this._client.getJob(jobId);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `J41-COMPLETE|Job:${jobData.jobHash}|Ts:${timestamp}|I confirm the work has been delivered satisfactorily.`;
+    const signature = signMessage(this.wif, message, this.networkType);
+
+    return this._client.completeJob(jobId, signature, timestamp);
+  }
+
+  /**
+   * Submit a review for an agent after a completed job.
+   * Gets the canonical message from the backend, signs it, and submits.
+   */
+  async submitReview(params: {
+    agentVerusId: string;
+    jobHash: string;
+    rating: number;
+    message?: string;
+  }): Promise<{ inboxId: string; status: string }> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    await this.login();
+
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    // Get canonical message from backend
+    const msgResult = await this._client.getReviewMessage({
+      agentVerusId: params.agentVerusId,
+      jobHash: params.jobHash,
+      message: params.message || '',
+      rating: params.rating,
+      timestamp,
+    });
+
+    const signature = signMessage(this.wif, msgResult.message, this.networkType);
+
+    const buyerVerusId = this.identityName
+      ? (this.identityName.endsWith('@') ? this.identityName : this.identityName + '@')
+      : this.iAddress || '';
+
+    const result = await this._client.submitReview({
+      agentVerusId: params.agentVerusId,
+      buyerVerusId,
+      jobHash: params.jobHash,
+      rating: params.rating,
+      message: params.message || '',
+      timestamp: msgResult.timestamp,
+      signature,
+    } as any);
+
+    return result as any;
+  }
+
   // ------------------------------------------
   // Payments (on-chain VRSC transfers)
   // ------------------------------------------
@@ -1664,40 +1738,66 @@ export class J41Agent extends EventEmitter {
    * @param amount - Amount in VRSC (not satoshis)
    * @returns Transaction ID
    */
-  async sendCurrency(to: string, amount: number): Promise<string> {
+  async sendCurrency(to: string, amount: number, opts?: {
+    /** Send change to this address instead of the default R-address */
+    changeAddress?: string;
+    /** Only use UTXOs from this address (i-address or R-address) */
+    sourceAddress?: string;
+  }): Promise<string> {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
     await this.login();
 
     // Resolve VerusID to i-address if needed
     let toAddress = to;
     if (to.includes('@') || to.includes('.')) {
-      // Looks like a VerusID — resolve via platform
       try {
         const payInfo = await this._client.getAgentPaymentAddress(to);
         toAddress = payInfo.address || to;
       } catch {
-        // If resolution fails, try using it as-is (might be a raw address)
         toAddress = to;
       }
     }
 
     // Get UTXOs
     const utxoResp = await this._client.getUtxos();
-    const utxos = utxoResp.utxos || utxoResp;
+    let utxos = utxoResp.utxos || utxoResp;
 
     if (!utxos || !Array.isArray(utxos) || utxos.length === 0) {
       throw new Error('No UTXOs available — wallet is empty');
     }
 
-    // Build and sign transaction
-    // Change goes to R-address (i-address change needs script support from backend)
-    const { buildPayment, wifToAddress } = await import('./tx/payment.js');
+    // Filter to value-carrying UTXOs only (skip identity update UTXOs with 0 satoshis)
+    utxos = utxos.filter((u: any) => u.satoshis > 0);
+
+    // If sourceAddress specified, only use UTXOs from that address
+    if (opts?.sourceAddress) {
+      utxos = utxos.filter((u: any) => u.address === opts.sourceAddress);
+      if (utxos.length === 0) {
+        throw new Error(`No spendable UTXOs on ${opts.sourceAddress}`);
+      }
+    }
+
+    // Determine change address
+    const { buildPayment, wifToAddress, isIAddress } = await import('./tx/payment.js');
+    let changeAddress = opts?.changeAddress;
+    if (!changeAddress) {
+      // Default: change goes back to the source address type
+      // If spending from i-address, change stays on i-address
+      // If spending from R-address (or mixed), change goes to R-address
+      const allFromI = utxos.every((u: any) => u.address && isIAddress(u.address));
+      if (allFromI && this.iAddress) {
+        changeAddress = this.iAddress;
+      } else {
+        changeAddress = wifToAddress(this.wif, this.networkType);
+      }
+    }
+
     const rawhex = buildPayment({
       wif: this.wif,
       toAddress,
       amount,
-      utxos: utxos.filter((u: any) => u.satoshis > 0),
-      changeAddress: wifToAddress(this.wif, this.networkType),
+      utxos,
+      changeAddress,
       network: this.networkType,
     });
 
@@ -1707,5 +1807,65 @@ export class J41Agent extends EventEmitter {
 
     this.emit('payment:sent', { txid, to: toAddress, amount });
     return txid;
+  }
+
+  /**
+   * Send to multiple addresses in a single TX (e.g. agent payment + platform fee).
+   * @returns txid
+   */
+  async sendMultiPayment(outputs: Array<{ address: string; amount: number }>): Promise<string> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    await this.login();
+
+    const utxoResp = await this._client.getUtxos();
+    let utxos = utxoResp.utxos || utxoResp;
+    if (!utxos || !Array.isArray(utxos) || utxos.length === 0) {
+      throw new Error('No UTXOs available — wallet is empty');
+    }
+    utxos = utxos.filter((u: any) => u.satoshis > 0);
+
+    const { buildMultiPayment, wifToAddress } = await import('./tx/payment.js');
+    const changeAddress = wifToAddress(this.wif, this.networkType);
+
+    const rawhex = buildMultiPayment({
+      wif: this.wif,
+      outputs,
+      utxos,
+      changeAddress,
+      network: this.networkType,
+    });
+
+    const result = await this._client.broadcast(rawhex);
+    const txid = typeof result === 'string' ? result : result.txid || JSON.stringify(result);
+    const totalAmount = outputs.reduce((s, o) => s + o.amount, 0);
+    this.emit('payment:sent', { txid, outputs, totalAmount });
+    return txid;
+  }
+
+  /**
+   * Transfer funds between the agent's R-address and i-address.
+   * @param direction - 'to-identity' moves R→i, 'to-r-address' moves i→R
+   * @param amount - Amount in VRSC
+   */
+  async transferFunds(direction: 'to-identity' | 'to-r-address', amount: number): Promise<string> {
+    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.iAddress) throw new Error('Agent has no i-address');
+
+    const { wifToAddress } = await import('./tx/payment.js');
+    const rAddress = wifToAddress(this.wif, this.networkType);
+
+    if (direction === 'to-identity') {
+      // R-address → i-address
+      return this.sendCurrency(this.iAddress, amount, {
+        sourceAddress: rAddress,
+        changeAddress: rAddress,
+      });
+    } else {
+      // i-address → R-address
+      return this.sendCurrency(rAddress, amount, {
+        sourceAddress: this.iAddress,
+        changeAddress: this.iAddress,
+      });
+    }
   }
 }

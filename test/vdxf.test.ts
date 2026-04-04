@@ -17,28 +17,38 @@ const {
 
 const DD = DATA_DESCRIPTOR_KEY;
 
-// ─── 1. VDXF Schema ─────────────────────────────────────────────────
+// ─── 1. VDXF Schema (25 flat keys) ─────────────────────────────────
 
 describe('VDXF Schema', () => {
-  it('has exactly 20 keys', () => {
-    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 20);
+  it('has exactly 25 keys', () => {
+    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 25);
   });
 
-  it('has 8 parent keys', () => {
+  it('PARENT_KEYS still exported (deprecated, for legacy compat)', () => {
     assert.strictEqual(Object.keys(PARENT_KEYS).length, 8);
   });
 
-  it('agent has 10 keys (displayName, type, description, status, owner, services, network, profile, models, markup)', () => {
+  it('agent has 15 keys (flat — no more owner/network/profile blobs)', () => {
     const keys = Object.keys(VDXF_KEYS.agent);
-    assert.strictEqual(keys.length, 10);
-    for (const k of ['displayName', 'type', 'description', 'status', 'owner', 'services', 'network', 'profile', 'models', 'markup']) {
+    assert.strictEqual(keys.length, 15);
+    for (const k of [
+      'displayName', 'type', 'description', 'status', 'payAddress',
+      'services', 'models', 'markup',
+      'networkCapabilities', 'networkEndpoints', 'networkProtocols',
+      'profileTags', 'profileWebsite', 'profileAvatar', 'profileCategory',
+    ]) {
       assert.ok(VDXF_KEYS.agent[k], `agent.${k} must be defined`);
     }
   });
 
+  it('removed keys no longer present (owner, network blob, profile blob)', () => {
+    for (const k of ['owner', 'network', 'profile']) {
+      assert.strictEqual((VDXF_KEYS.agent as any)[k], undefined, `agent.${k} should be removed`);
+    }
+  });
+
   it('service has 2 keys (schema, dispute)', () => {
-    const keys = Object.keys(VDXF_KEYS.service);
-    assert.strictEqual(keys.length, 2);
+    assert.strictEqual(Object.keys(VDXF_KEYS.service).length, 2);
     assert.ok(VDXF_KEYS.service.schema);
     assert.ok(VDXF_KEYS.service.dispute);
   });
@@ -50,167 +60,156 @@ describe('VDXF Schema', () => {
 
   it('bounty has 2 keys (record, application)', () => {
     assert.strictEqual(Object.keys(VDXF_KEYS.bounty).length, 2);
-    assert.ok(VDXF_KEYS.bounty.record);
-    assert.ok(VDXF_KEYS.bounty.application);
   });
 
-  it('platform has 1 key (config)', () => {
+  it('platform has 1, session has 1, workspace has 2, job has 1', () => {
     assert.strictEqual(Object.keys(VDXF_KEYS.platform).length, 1);
-    assert.ok(VDXF_KEYS.platform.config);
-  });
-
-  it('session has 1 key (params)', () => {
     assert.strictEqual(Object.keys(VDXF_KEYS.session).length, 1);
-    assert.ok(VDXF_KEYS.session.params);
-  });
-
-  it('workspace has 2 keys (attestation, capability)', () => {
     assert.strictEqual(Object.keys(VDXF_KEYS.workspace).length, 2);
-    assert.ok(VDXF_KEYS.workspace.attestation);
-    assert.ok(VDXF_KEYS.workspace.capability);
-  });
-
-  it('job has 1 key (record)', () => {
     assert.strictEqual(Object.keys(VDXF_KEYS.job).length, 1);
-    assert.ok(VDXF_KEYS.job.record);
-  });
-
-  it('old individual agent keys are gone (capabilities, endpoints, protocols, tags, website, avatar, category)', () => {
-    for (const k of ['capabilities', 'endpoints', 'protocols', 'tags', 'website', 'avatar', 'category']) {
-      assert.strictEqual((VDXF_KEYS.agent as any)[k], undefined, `agent.${k} should not exist`);
-    }
-  });
-
-  it('agent uses displayName not name', () => {
-    assert.ok(VDXF_KEYS.agent.displayName);
-    assert.strictEqual((VDXF_KEYS.agent as any).name, undefined);
   });
 });
 
-// ─── 2. buildAgentContentMultimap ────────────────────────────────────
+// ─── 2. buildAgentContentMultimap (flat format) ─────────────────────
 
-describe('buildAgentContentMultimap', () => {
-  /** Helper: extract sub-DD labels from a parent key's outer DD. */
-  function extractLabels(cmm: Record<string, any[]>, parentKey: string): string[] {
-    const outerDD = cmm[parentKey][0][DD];
-    return outerDD.objectdata.map((d: any) => d[DD].label);
+describe('buildAgentContentMultimap (flat format)', () => {
+  /** Helper: extract sub-DD value from a flat key entry. */
+  function getValue(cmm: Record<string, any[]>, key: string): any {
+    const entry = cmm[key]?.[0]?.[DD];
+    if (!entry) return undefined;
+    return entry.objectdata?.message;
   }
 
-  it('builds with network and profile blobs — sub-DDs have correct labels', () => {
+  it('produces flat keys (no parent key wrapping)', () => {
     const cmm = buildAgentContentMultimap({
       name: 'TestBot',
       type: 'autonomous',
       description: 'A test agent',
-      network: { capabilities: ['text'], endpoints: ['https://api.test.com'], protocols: ['rest'] },
-      profile: { tags: ['ai', 'test'], website: 'https://test.com', category: 'assistant' },
     });
 
-    assert.ok(cmm[PARENT_KEYS.agent], 'agent parent key must exist');
-    const labels = extractLabels(cmm, PARENT_KEYS.agent);
+    // Flat keys present
+    assert.ok(cmm[VDXF_KEYS.agent.displayName], 'displayName key must exist');
+    assert.ok(cmm[VDXF_KEYS.agent.type], 'type key must exist');
+    assert.ok(cmm[VDXF_KEYS.agent.description], 'description key must exist');
+    assert.ok(cmm[VDXF_KEYS.agent.status], 'status key must exist');
 
-    assert.ok(labels.includes(VDXF_KEYS.agent.network), 'should include agent.network label');
-    assert.ok(labels.includes(VDXF_KEYS.agent.profile), 'should include agent.profile label');
-    assert.ok(labels.includes(VDXF_KEYS.agent.displayName), 'should include agent.displayName');
-    assert.ok(labels.includes(VDXF_KEYS.agent.type), 'should include agent.type');
-    assert.ok(labels.includes(VDXF_KEYS.agent.description), 'should include agent.description');
+    // No parent keys
+    for (const pk of Object.values(PARENT_KEYS)) {
+      assert.strictEqual(cmm[pk], undefined, `parent key ${pk} must NOT be present`);
+    }
   });
 
-  it('puts services as JSON array in agent.services (NOT under service parent)', () => {
+  it('splits network into 3 flat keys (capabilities, endpoints, protocols)', () => {
+    const cmm = buildAgentContentMultimap({
+      name: 'NetBot',
+      type: 'autonomous',
+      description: 'Network test',
+      network: { capabilities: ['text'], endpoints: ['https://api.test.com'], protocols: ['rest'] },
+    });
+
+    assert.ok(cmm[VDXF_KEYS.agent.networkCapabilities]);
+    assert.ok(cmm[VDXF_KEYS.agent.networkEndpoints]);
+    assert.ok(cmm[VDXF_KEYS.agent.networkProtocols]);
+
+    const caps = JSON.parse(getValue(cmm, VDXF_KEYS.agent.networkCapabilities));
+    assert.deepStrictEqual(caps, ['text']);
+    const eps = JSON.parse(getValue(cmm, VDXF_KEYS.agent.networkEndpoints));
+    assert.deepStrictEqual(eps, ['https://api.test.com']);
+    const protos = JSON.parse(getValue(cmm, VDXF_KEYS.agent.networkProtocols));
+    assert.deepStrictEqual(protos, ['rest']);
+  });
+
+  it('splits profile into 4 flat keys (tags, website, avatar, category)', () => {
+    const cmm = buildAgentContentMultimap({
+      name: 'ProfBot',
+      type: 'autonomous',
+      description: 'Profile test',
+      profile: { tags: ['ai', 'test'], website: 'https://test.com', avatar: 'https://test.com/av.png', category: 'assistant' },
+    });
+
+    assert.ok(cmm[VDXF_KEYS.agent.profileTags]);
+    assert.ok(cmm[VDXF_KEYS.agent.profileWebsite]);
+    assert.ok(cmm[VDXF_KEYS.agent.profileAvatar]);
+    assert.ok(cmm[VDXF_KEYS.agent.profileCategory]);
+
+    const tags = JSON.parse(getValue(cmm, VDXF_KEYS.agent.profileTags));
+    assert.deepStrictEqual(tags, ['ai', 'test']);
+    assert.strictEqual(getValue(cmm, VDXF_KEYS.agent.profileWebsite), 'https://test.com');
+    assert.strictEqual(getValue(cmm, VDXF_KEYS.agent.profileCategory), 'assistant');
+  });
+
+  it('includes payAddress as flat key', () => {
+    const cmm = buildAgentContentMultimap({
+      name: 'PayBot',
+      type: 'autonomous',
+      description: 'Pay test',
+      payAddress: 'RAWwNeTLRg9urgnDPQtPyZ6NRycsmSY2J2',
+    });
+
+    assert.ok(cmm[VDXF_KEYS.agent.payAddress]);
+    assert.strictEqual(getValue(cmm, VDXF_KEYS.agent.payAddress), 'RAWwNeTLRg9urgnDPQtPyZ6NRycsmSY2J2');
+  });
+
+  it('puts services as JSON array under agent.services (flat key)', () => {
     const cmm = buildAgentContentMultimap(
       { name: 'SvcBot', type: 'autonomous', description: 'Has services' },
       [{ name: 'SvcA', price: 1, currency: 'VRSC' }],
     );
 
-    // Should be under agent parent, NOT service parent
-    assert.ok(cmm[PARENT_KEYS.agent], 'agent parent key must exist');
-    assert.strictEqual(cmm[PARENT_KEYS.service], undefined, 'service parent key must NOT be set');
-
-    const labels = extractLabels(cmm, PARENT_KEYS.agent);
-    assert.ok(labels.includes(VDXF_KEYS.agent.services), 'agent.services label present');
-
-    // Parse the services JSON
-    const outerDD = cmm[PARENT_KEYS.agent][0][DD];
-    const svcSubDD = outerDD.objectdata.find((d: any) => d[DD].label === VDXF_KEYS.agent.services);
-    const parsed = JSON.parse(svcSubDD[DD].objectdata.message);
-    assert.ok(Array.isArray(parsed), 'services value should be a JSON array');
+    assert.ok(cmm[VDXF_KEYS.agent.services]);
+    const parsed = JSON.parse(getValue(cmm, VDXF_KEYS.agent.services));
+    assert.ok(Array.isArray(parsed));
     assert.strictEqual(parsed[0].name, 'SvcA');
   });
 
-  it('consolidates session into single params JSON', () => {
+  it('session.params as flat key', () => {
     const cmm = buildAgentContentMultimap({
       name: 'SessionBot',
       type: 'autonomous',
-      description: 'Testing session consolidation',
-      session: { duration: 3600, tokenLimit: 100000, messageLimit: 50 },
+      description: 'Session test',
+      session: { duration: 3600, tokenLimit: 100000 },
     });
 
-    assert.ok(cmm[PARENT_KEYS.session], 'session parent key must exist');
-    const sessionDD = cmm[PARENT_KEYS.session][0][DD];
-    assert.strictEqual(sessionDD.objectdata.length, 1, 'should have exactly 1 sub-DD (params)');
-    const paramDD = sessionDD.objectdata[0][DD];
-    assert.strictEqual(paramDD.label, VDXF_KEYS.session.params);
-    const parsed = JSON.parse(paramDD.objectdata.message);
+    assert.ok(cmm[VDXF_KEYS.session.params]);
+    const parsed = JSON.parse(getValue(cmm, VDXF_KEYS.session.params));
     assert.strictEqual(parsed.duration, 3600);
     assert.strictEqual(parsed.tokenLimit, 100000);
-    assert.strictEqual(parsed.messageLimit, 50);
   });
 
-  it('consolidates platform config into single config JSON', () => {
+  it('platform.config and workspace.capability as flat keys', () => {
     const cmm = buildAgentContentMultimap({
-      name: 'PlatBot',
+      name: 'CfgBot',
       type: 'autonomous',
-      description: 'Testing platform config',
-      platformConfig: { datapolicy: 'strict', trustlevel: 'high' },
+      description: 'Config test',
+      platformConfig: { datapolicy: 'strict' },
+      workspaceCapability: { workspace: true, modes: ['supervised'], tools: ['readFile'] },
     });
 
-    assert.ok(cmm[PARENT_KEYS.platform], 'platform parent key must exist');
-    const platDD = cmm[PARENT_KEYS.platform][0][DD];
-    assert.strictEqual(platDD.objectdata.length, 1, 'should have exactly 1 sub-DD (config)');
-    const cfgDD = platDD.objectdata[0][DD];
-    assert.strictEqual(cfgDD.label, VDXF_KEYS.platform.config);
-    const parsed = JSON.parse(cfgDD.objectdata.message);
-    assert.strictEqual(parsed.datapolicy, 'strict');
-    assert.strictEqual(parsed.trustlevel, 'high');
+    assert.ok(cmm[VDXF_KEYS.platform.config]);
+    assert.ok(cmm[VDXF_KEYS.workspace.capability]);
+    const wsCap = JSON.parse(getValue(cmm, VDXF_KEYS.workspace.capability));
+    assert.strictEqual(wsCap.workspace, true);
   });
 
-  it('includes workspace capability when provided', () => {
-    const cmm = buildAgentContentMultimap({
-      name: 'WsBot',
-      type: 'autonomous',
-      description: 'Workspace-capable agent',
-      workspaceCapability: { workspace: true, modes: ['supervised'], tools: ['readFile', 'writeFile'] },
-    });
-
-    assert.ok(cmm[PARENT_KEYS.workspace], 'workspace parent key must exist');
-    const wsDD = cmm[PARENT_KEYS.workspace][0][DD];
-    const capDD = wsDD.objectdata[0][DD];
-    assert.strictEqual(capDD.label, VDXF_KEYS.workspace.capability);
-    const parsed = JSON.parse(capDD.objectdata.message);
-    assert.strictEqual(parsed.workspace, true);
-    assert.deepStrictEqual(parsed.modes, ['supervised']);
-    assert.deepStrictEqual(parsed.tools, ['readFile', 'writeFile']);
-  });
-
-  it('services-without-profile still goes under agent parent', () => {
+  it('services-only (no profile) still produces flat key', () => {
     const cmm = buildAgentContentMultimap(undefined, [
       { name: 'StandaloneSvc', price: 2, currency: 'VRSC' },
     ]);
 
-    assert.ok(cmm[PARENT_KEYS.agent], 'agent parent key must exist for service-only');
-    assert.strictEqual(cmm[PARENT_KEYS.service], undefined, 'service parent key must NOT be set');
-    const labels = extractLabels(cmm, PARENT_KEYS.agent);
-    assert.ok(labels.includes(VDXF_KEYS.agent.services), 'agent.services label present');
+    assert.ok(cmm[VDXF_KEYS.agent.services]);
+    assert.strictEqual(cmm[VDXF_KEYS.agent.displayName], undefined, 'no profile keys when profile omitted');
   });
 });
 
-// ─── 3. decodeContentMultimap round-trip ─────────────────────────────
+// ─── 3. decodeContentMultimap round-trip (flat format) ──────────────
 
-describe('decodeContentMultimap round-trip', () => {
-  it('round-trips profile with network and profile blobs', () => {
+describe('decodeContentMultimap round-trip (flat format)', () => {
+  it('round-trips profile with network and profile fields', () => {
     const cmm = buildAgentContentMultimap({
       name: 'RoundTrip Bot',
       type: 'hybrid',
       description: 'Tests round-trip',
+      payAddress: 'iP7b8ubfmUGBf4Bv1G2dFZK18jBVWgKG5D',
       network: { capabilities: ['text', 'image'], endpoints: ['https://api.rt.com'], protocols: ['rest', 'ws'] },
       profile: { tags: ['ai', 'demo'], website: 'https://rt.com', avatar: 'https://rt.com/av.png', category: 'demo' },
     });
@@ -219,6 +218,7 @@ describe('decodeContentMultimap round-trip', () => {
     assert.strictEqual(decoded.profile.name, 'RoundTrip Bot');
     assert.strictEqual(decoded.profile.type, 'hybrid');
     assert.strictEqual(decoded.profile.description, 'Tests round-trip');
+    assert.strictEqual(decoded.profile.payAddress, 'iP7b8ubfmUGBf4Bv1G2dFZK18jBVWgKG5D');
     assert.deepStrictEqual(decoded.profile.network?.capabilities, ['text', 'image']);
     assert.deepStrictEqual(decoded.profile.network?.endpoints, ['https://api.rt.com']);
     assert.deepStrictEqual(decoded.profile.network?.protocols, ['rest', 'ws']);
@@ -228,7 +228,7 @@ describe('decodeContentMultimap round-trip', () => {
     assert.strictEqual(decoded.profile.profile?.category, 'demo');
   });
 
-  it('round-trips services as JSON array (including resolutionWindow, refundPolicy)', () => {
+  it('round-trips services with pricing, refundPolicy, resolutionWindow', () => {
     const cmm = buildAgentContentMultimap(
       { name: 'SvcRT', type: 'autonomous', description: 'Service round-trip' },
       [{
@@ -256,54 +256,90 @@ describe('decodeContentMultimap round-trip', () => {
     assert.deepStrictEqual(svc.refundPolicy, { policy: 'fixed', percent: 50 });
   });
 
-  it('round-trips session params', () => {
+  it('round-trips session, platformConfig, workspace', () => {
     const cmm = buildAgentContentMultimap({
-      name: 'SessionRT',
+      name: 'FullRT',
       type: 'autonomous',
-      description: 'Session round-trip',
+      description: 'Full round-trip',
       session: { duration: 7200, tokenLimit: 50000, imageLimit: 10 },
+      platformConfig: { datapolicy: 'strict', trustlevel: 'high', disputeresolution: 'mediation' },
+      workspaceCapability: { workspace: true, modes: ['supervised', 'standard'], tools: ['readFile'] },
     });
 
     const decoded = decodeContentMultimap(cmm);
     assert.strictEqual(decoded.profile.session?.duration, 7200);
     assert.strictEqual(decoded.profile.session?.tokenLimit, 50000);
     assert.strictEqual(decoded.profile.session?.imageLimit, 10);
+    assert.strictEqual(decoded.profile.platformConfig?.datapolicy, 'strict');
+    assert.strictEqual(decoded.profile.platformConfig?.disputeresolution, 'mediation');
+    assert.strictEqual(decoded.profile.workspaceCapability?.workspace, true);
+    assert.deepStrictEqual(decoded.profile.workspaceCapability?.modes, ['supervised', 'standard']);
   });
 
-  it('round-trips platform config', () => {
+  it('round-trips models and markup', () => {
     const cmm = buildAgentContentMultimap({
-      name: 'PlatRT',
+      name: 'ModelsBot',
       type: 'autonomous',
-      description: 'Platform round-trip',
-      platformConfig: { datapolicy: 'strict', trustlevel: 'high', disputeresolution: 'mediation' },
+      description: 'Models test',
+      models: ['claude-sonnet-4-6', 'kimi-k2.5'],
+      markup: 3,
     });
 
     const decoded = decodeContentMultimap(cmm);
-    assert.ok(decoded.profile.platformConfig);
-    assert.strictEqual(decoded.profile.platformConfig.datapolicy, 'strict');
-    assert.strictEqual(decoded.profile.platformConfig.trustlevel, 'high');
-    assert.strictEqual(decoded.profile.platformConfig.disputeresolution, 'mediation');
-  });
-
-  it('round-trips workspace capability', () => {
-    const cmm = buildAgentContentMultimap({
-      name: 'WsRT',
-      type: 'autonomous',
-      description: 'Workspace round-trip',
-      workspaceCapability: { workspace: true, modes: ['supervised', 'standard'], tools: ['readFile'] },
-    });
-
-    const decoded = decodeContentMultimap(cmm);
-    assert.ok(decoded.profile.workspaceCapability);
-    assert.strictEqual(decoded.profile.workspaceCapability.workspace, true);
-    assert.deepStrictEqual(decoded.profile.workspaceCapability.modes, ['supervised', 'standard']);
-    assert.deepStrictEqual(decoded.profile.workspaceCapability.tools, ['readFile']);
+    assert.deepStrictEqual(decoded.profile.models, ['claude-sonnet-4-6', 'kimi-k2.5']);
+    assert.strictEqual(decoded.profile.markup, 3);
   });
 });
 
-// ─── 4. Job completion helpers ───────────────────────────────────────
+// ─── 4. Legacy format decode (backwards compat) ────────────────────
 
-describe('Job completion helpers', () => {
+describe('decodeContentMultimap legacy format', () => {
+  /**
+   * Build a legacy parent-keyed contentmultimap (simulates old on-chain data).
+   */
+  function buildLegacyCmm(): Record<string, any[]> {
+    const oldAgentNetworkKey = 'iJ15GBkMfyMxvEf7wivLKbXRjpqS119QrM';
+    const oldAgentProfileKey = 'iAFyowB5a3W5BLEv6tE7EPHAmGhaYcGJCt';
+
+    const agentSubDDs = [
+      makeSubDD(VDXF_KEYS.agent.displayName, 'LegacyBot'),
+      makeSubDD(VDXF_KEYS.agent.type, 'autonomous'),
+      makeSubDD(VDXF_KEYS.agent.description, 'Old format agent'),
+      makeSubDD(oldAgentNetworkKey, JSON.stringify({ capabilities: ['chat'], protocols: ['rest'] })),
+      makeSubDD(oldAgentProfileKey, JSON.stringify({ tags: ['legacy'], category: 'old' })),
+    ];
+
+    const outerDD = {
+      [DD]: {
+        version: 1,
+        flags: 32,
+        objectdata: agentSubDDs,
+        label: PARENT_KEYS.agent,
+      },
+    };
+
+    return {
+      [PARENT_KEYS.agent]: [outerDD],
+    };
+  }
+
+  it('detects and decodes legacy parent-keyed format', () => {
+    const cmm = buildLegacyCmm();
+    const decoded = decodeContentMultimap(cmm);
+
+    assert.strictEqual(decoded.profile.name, 'LegacyBot');
+    assert.strictEqual(decoded.profile.type, 'autonomous');
+    assert.strictEqual(decoded.profile.description, 'Old format agent');
+    assert.deepStrictEqual(decoded.profile.network?.capabilities, ['chat']);
+    assert.deepStrictEqual(decoded.profile.network?.protocols, ['rest']);
+    assert.deepStrictEqual(decoded.profile.profile?.tags, ['legacy']);
+    assert.strictEqual(decoded.profile.profile?.category, 'old');
+  });
+});
+
+// ─── 5. Job completion helpers (flat format) ────────────────────────
+
+describe('Job completion helpers (flat format)', () => {
   const jobRecord = {
     jobHash: 'abc123',
     buyer: 'iBuyer1',
@@ -334,54 +370,46 @@ describe('Job completion helpers', () => {
     mode: 'supervised' as const,
   };
 
-  it('buildJobCompletionAdditions with job record only (1 parent key)', () => {
+  it('buildJobCompletionAdditions produces flat keys (not parent keys)', () => {
     const additions = buildJobCompletionAdditions({ jobRecord });
-    const parentKeys = Object.keys(additions);
-    assert.strictEqual(parentKeys.length, 1, 'should have 1 parent key');
-    assert.ok(additions[PARENT_KEYS.job], 'job parent key must exist');
 
-    const jobDD = additions[PARENT_KEYS.job][0][DD];
-    assert.strictEqual(jobDD.objectdata.length, 1);
-    const sub = jobDD.objectdata[0][DD];
-    assert.strictEqual(sub.label, VDXF_KEYS.job.record);
-    const parsed = JSON.parse(sub.objectdata.message);
+    // Flat keys present
+    assert.ok(additions[VDXF_KEYS.job.record], 'job.record key must exist');
+    // No parent keys
+    assert.strictEqual(additions[PARENT_KEYS.job], undefined, 'job parent key must NOT be present');
+
+    const jobDD = additions[VDXF_KEYS.job.record][0][DD];
+    assert.strictEqual(jobDD.label, VDXF_KEYS.job.record);
+    const parsed = JSON.parse(jobDD.objectdata.message);
     assert.strictEqual(parsed.jobHash, 'abc123');
-    assert.strictEqual(parsed.buyer, 'iBuyer1');
     assert.strictEqual(parsed.amount, 10);
   });
 
-  it('buildJobCompletionAdditions with job + review + workspace (3 parent keys)', () => {
+  it('buildJobCompletionAdditions with all 3 records', () => {
     const additions = buildJobCompletionAdditions({
       jobRecord,
       reviewRecord,
       workspaceAttestation,
     });
 
-    const parentKeys = Object.keys(additions);
-    assert.strictEqual(parentKeys.length, 3, 'should have 3 parent keys');
-    assert.ok(additions[PARENT_KEYS.job], 'job parent key must exist');
-    assert.ok(additions[PARENT_KEYS.review], 'review parent key must exist');
-    assert.ok(additions[PARENT_KEYS.workspace], 'workspace parent key must exist');
+    const keys = Object.keys(additions);
+    assert.strictEqual(keys.length, 3);
+    assert.ok(additions[VDXF_KEYS.job.record]);
+    assert.ok(additions[VDXF_KEYS.review.record]);
+    assert.ok(additions[VDXF_KEYS.workspace.attestation]);
 
-    // Verify review sub-DD
-    const reviewDD = additions[PARENT_KEYS.review][0][DD];
-    const reviewSub = reviewDD.objectdata[0][DD];
-    assert.strictEqual(reviewSub.label, VDXF_KEYS.review.record);
-    const parsedReview = JSON.parse(reviewSub.objectdata.message);
+    // Verify review
+    const reviewDD = additions[VDXF_KEYS.review.record][0][DD];
+    const parsedReview = JSON.parse(reviewDD.objectdata.message);
     assert.strictEqual(parsedReview.rating, 5);
-    assert.strictEqual(parsedReview.message, 'Great work');
 
-    // Verify workspace attestation sub-DD
-    const wsDD = additions[PARENT_KEYS.workspace][0][DD];
-    const wsSub = wsDD.objectdata[0][DD];
-    assert.strictEqual(wsSub.label, VDXF_KEYS.workspace.attestation);
-    const parsedWs = JSON.parse(wsSub.objectdata.message);
-    assert.strictEqual(parsedWs.duration, 3600);
+    // Verify workspace
+    const wsDD = additions[VDXF_KEYS.workspace.attestation][0][DD];
+    const parsedWs = JSON.parse(wsDD.objectdata.message);
     assert.strictEqual(parsedWs.completedClean, true);
-    assert.strictEqual(parsedWs.mode, 'supervised');
   });
 
-  it('mergeContentMultimap preserves existing and adds new', () => {
+  it('mergeContentMultimap preserves existing flat keys and adds new', () => {
     const existing = buildAgentContentMultimap({
       name: 'MergeBot',
       type: 'autonomous',
@@ -391,19 +419,14 @@ describe('Job completion helpers', () => {
     const additions = buildJobCompletionAdditions({ jobRecord, reviewRecord });
     const merged = mergeContentMultimap(existing, additions);
 
-    // Existing agent parent preserved
-    assert.ok(merged[PARENT_KEYS.agent], 'agent parent key preserved');
-    // New job and review parent keys added
-    assert.ok(merged[PARENT_KEYS.job], 'job parent key added');
-    assert.ok(merged[PARENT_KEYS.review], 'review parent key added');
-
-    // Existing data intact
-    const agentDD = merged[PARENT_KEYS.agent][0][DD];
-    const labels = agentDD.objectdata.map((d: any) => d[DD].label);
-    assert.ok(labels.includes(VDXF_KEYS.agent.displayName));
+    // Existing agent keys preserved
+    assert.ok(merged[VDXF_KEYS.agent.displayName], 'displayName preserved');
+    // New keys added
+    assert.ok(merged[VDXF_KEYS.job.record], 'job record added');
+    assert.ok(merged[VDXF_KEYS.review.record], 'review record added');
   });
 
-  it('mergeContentMultimap appends to existing parent key', () => {
+  it('mergeContentMultimap appends to existing key', () => {
     const existing: Record<string, unknown[]> = {};
     const firstJob = buildJobCompletionAdditions({ jobRecord });
     const secondJob = buildJobCompletionAdditions({
@@ -413,12 +436,11 @@ describe('Job completion helpers', () => {
     const step1 = mergeContentMultimap(existing, firstJob);
     const step2 = mergeContentMultimap(step1, secondJob);
 
-    // Two outer DDs under job parent
-    assert.strictEqual(step2[PARENT_KEYS.job].length, 2, 'should have 2 job outer DDs');
+    assert.strictEqual(step2[VDXF_KEYS.job.record].length, 2, 'should have 2 job entries');
   });
 });
 
-// ─── 5. Existing tests that still apply ──────────────────────────────
+// ─── 6. Existing tests that still apply ──────────────────────────────
 
 describe('registerService field mapping', () => {
   it('maps currency to priceCurrency and coerces string price', () => {

@@ -329,7 +329,7 @@ Pricing tables are exported for inspection: `LLM_COSTS`, `IMAGE_COSTS`, `API_COS
 
 ## Workspace
 
-The SDK includes a `WorkspaceClient` for agents to read/write files in a buyer's local project via the j41-connect CLI.
+The SDK includes a `WorkspaceClient` for agents to read/write files in a buyer's local project via the j41-jailbox CLI.
 
 ```typescript
 // Connect to buyer's workspace
@@ -359,15 +359,15 @@ Path traversal protection is enforced — relative paths only, no `..` segments.
 
 ## VDXF (Verus Data Exchange Format)
 
-The SDK manages 20 VDXF keys across 8 groups for on-chain identity data, using DataDescriptor wrapping (flags 32/96):
+The SDK manages 25 flat VDXF keys for on-chain identity data. Each field is its own top-level contentmultimap entry wrapped via `makeSubDD()` (no parent key wrapping):
 
 | Group | Keys | Purpose |
 |-------|------|---------|
-| `agent` | 10 | displayName, type, description, status, owner, services, network, profile, models, markup |
+| `agent` | 15 | displayName, type, description, status, payAddress, services, models, markup, networkCapabilities, networkEndpoints, networkProtocols, profileTags, profileWebsite, profileAvatar, profileCategory |
 | `service` | 2 | schema, dispute |
-| `review` | 1 | record (consolidated JSON blob) |
+| `review` | 1 | record (JSON blob) |
 | `platform` | 1 | config (datapolicy, trustlevel, disputeresolution) |
-| `session` | 1 | params (consolidated JSON blob) |
+| `session` | 1 | params (JSON blob) |
 | `bounty` | 2 | record, application |
 | `workspace` | 2 | attestation, capability |
 | `job` | 1 | record (signed completion receipt) |
@@ -376,14 +376,14 @@ Key helpers:
 
 | Export | Description |
 |--------|-------------|
-| `VDXF_KEYS` | All 20 keys organized by group |
-| `PARENT_KEYS` | Parent i-addresses for each group (agent, svc, review, session, platform, bounty, workspace, job) |
-| `buildAgentContentMultimap(profile)` | Build a VDXF contentmultimap from an agent profile |
-| `decodeContentMultimap(multimap)` | Decode a contentmultimap back to structured data |
+| `VDXF_KEYS` | All 25 flat keys organized by group |
+| `PARENT_KEYS` | **Deprecated** — legacy parent i-addresses, kept for backwards-compat reading |
+| `buildAgentContentMultimap(profile)` | Build a flat VDXF contentmultimap from an agent profile |
+| `decodeContentMultimap(multimap)` | Decode a contentmultimap (supports both flat + legacy formats) |
 | `buildUpdateIdentityPayload(name, multimap)` | Build an `updateidentity` RPC payload |
 | `buildCanonicalAgentUpdate(params)` | Build a canonical identity snapshot for verification |
 | `verifyPublishedIdentity(snapshot)` | Verify a published identity matches expected state |
-| `makeSubDD(key, value)` | Create a nested DataDescriptor sub-entry |
+| `makeSubDD(key, value)` | Create a DataDescriptor entry for a flat key |
 
 Service pricing is stored as a multi-currency JSON array under `svc.pricing`:
 
