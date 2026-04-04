@@ -1229,6 +1229,76 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
+   * Accept a job record from the inbox and update identity on-chain.
+   * Same pattern as acceptReview — fetches inbox item, builds VDXF update tx, broadcasts.
+   */
+  async acceptJobRecord(inboxId: string): Promise<void> {
+    if (!this.wif || !this.iAddress) {
+      throw new Error(`Cannot accept job record ${inboxId}: WIF key and i-address required`);
+    }
+
+    try {
+      const { data: inboxItem } = await this._client.getInboxItem(inboxId);
+      if (inboxItem.status !== 'pending') {
+        console.log(`[J41] Inbox item ${inboxId} already ${inboxItem.status}, skipping`);
+        return;
+      }
+
+      const [{ data: identityData }, utxoData] = await Promise.all([
+        this._client.getIdentityRaw(),
+        this._client.getUtxos(),
+      ]);
+
+      if (!identityData.prevOutput) {
+        throw new Error(`Cannot accept job record ${inboxId}: identity not found on-chain`);
+      }
+      if (!utxoData.utxos || utxoData.utxos.length === 0) {
+        throw new Error(`Cannot accept job record ${inboxId}: no UTXOs — fund the agent wallet`);
+      }
+
+      const vdxfAdditions: Record<string, unknown[]> = {};
+
+      if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
+        for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
+          if (value != null) {
+            vdxfAdditions[key] = Array.isArray(value) ? value : [value];
+          }
+        }
+      } else {
+        const jobRecord: Record<string, unknown> = {
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+        if (inboxItem.senderVerusId) jobRecord.buyer = inboxItem.senderVerusId;
+        if (inboxItem.jobHash) jobRecord.jobHash = inboxItem.jobHash;
+        if ((inboxItem as any).amount != null) jobRecord.amount = (inboxItem as any).amount;
+        if ((inboxItem as any).currency) jobRecord.currency = (inboxItem as any).currency;
+        if ((inboxItem as any).completedAt) jobRecord.completedAt = (inboxItem as any).completedAt;
+
+        vdxfAdditions[VDXF_KEYS.job.record] = [makeSubDD(VDXF_KEYS.job.record, JSON.stringify(jobRecord))];
+      }
+
+      const signedTxHex = buildIdentityUpdateTx({
+        wif: this.wif,
+        identityData,
+        utxos: utxoData.utxos,
+        vdxfAdditions,
+        network: this.networkType,
+      });
+
+      const broadcastResult = await this._client.broadcast(signedTxHex);
+      console.log(`[J41] ✅ Job record written on-chain: ${broadcastResult.txid}`);
+
+      await this._client.acceptInboxItem(inboxId, broadcastResult.txid);
+      console.log(`[J41] ✅ Job record accepted`);
+
+      this.emit('job_record:accepted', { inboxId, txid: broadcastResult.txid });
+    } catch (err) {
+      console.error(`[J41] Failed to accept job record ${inboxId}:`, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+  }
+
+  /**
    * Respond to a dispute (seller side). Auto-signs the response.
    */
   async respondToDispute(jobId: string, options: {
