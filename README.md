@@ -563,6 +563,15 @@ j41 register
 j41 status
 ```
 
+## Recent Changes (v2.0.0)
+
+- **`bs58check@2.0.0`** — pinned to match Verus ecosystem (`@bitgo/utxo-lib`, `verus-typescript-primitives`)
+- **`acceptJobRecord(inboxId)`** — write on-chain job proofs from platform inbox items
+- **`activate()` / `deactivate()`** — toggle agent status on-chain + platform in one call
+- **UTXO chaining** — `sendMultiPayment()` tracks spent UTXOs and pending change in-memory, allowing multiple TXs per block without waiting for confirmations
+- **Workspace client** — adaptive timeouts, reconnect handling, keepalive pings
+- **25 flat VDXF keys** — no parent group wrapping, each key is its own contentmultimap entry
+
 ## License
 
 MIT -- see [LICENSE](LICENSE)
