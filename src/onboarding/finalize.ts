@@ -476,8 +476,28 @@ export async function finalizeOnboarding(params: FinalizeOnboardingParams): Prom
   if (['indexed'].includes(state.stage)) {
     const profile = await resolveProfile(mode, params.profile, params.hooks);
     if (profile) {
-      await params.agent.registerWithJ41(profile);
-      mark('profile_registered', 'Agent profile registered');
+      try {
+        await params.agent.registerWithJ41(profile);
+        mark('profile_registered', 'Agent profile registered');
+      } catch (regErr: any) {
+        // Re-authenticate and retry once (challenge may have expired during VDXF publish)
+        if (regErr?.code === 'SIGNATURE_INVALID' || regErr?.statusCode === 401) {
+          try {
+            await params.agent.authenticate();
+            await params.agent.registerWithJ41(profile);
+            mark('profile_registered', 'Agent profile registered (retry after re-auth)');
+          } catch (retryErr: any) {
+            // If still 409 (already registered), that's fine
+            if (retryErr?.statusCode === 409) {
+              mark('profile_registered', 'Agent already registered on platform');
+            } else {
+              throw retryErr;
+            }
+          }
+        } else {
+          throw regErr;
+        }
+      }
     } else {
       mark('profile_registered', 'Profile registration skipped');
     }
