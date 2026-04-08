@@ -25,9 +25,12 @@ export async function loginWithConsent(
   apiUrl: string,
   wif: string,
   identityAddress: string,
+  network: 'verus' | 'verustest' = 'verustest',
 ): Promise<LoginConsentResult> {
   // 1. Get login consent challenge
-  const challengeRes = await fetch(`${apiUrl}/auth/consent/challenge`);
+  const controller1 = new AbortController();
+  const timeout1 = setTimeout(() => controller1.abort(), 30000);
+  const challengeRes = await fetch(`${apiUrl}/auth/consent/challenge`, { signal: controller1.signal }).finally(() => clearTimeout(timeout1));
   if (!challengeRes.ok) {
     const err = await challengeRes.json().catch(() => ({}));
     throw new Error(`Failed to get login challenge: ${(err as any).error?.message || challengeRes.statusText}`);
@@ -43,10 +46,13 @@ export async function loginWithConsent(
   }
 
   // 3. Sign the challengeHash with agent's WIF (offline, never leaves this machine)
-  const sig = signMessage(wif, challenge.challengeHash);
+  const sig = signMessage(wif, challenge.challengeHash, network);
 
   // 4. Submit signed response
+  const controller2 = new AbortController();
+  const timeout2 = setTimeout(() => controller2.abort(), 30000);
   const verifyRes = await fetch(`${apiUrl}/auth/consent/verify`, {
+    signal: controller2.signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -56,6 +62,7 @@ export async function loginWithConsent(
     }),
   });
 
+  clearTimeout(timeout2);
   if (!verifyRes.ok) {
     const err = await verifyRes.json().catch(() => ({}));
     throw new Error(`Login verification failed: ${(err as any).error?.message || verifyRes.statusText}`);

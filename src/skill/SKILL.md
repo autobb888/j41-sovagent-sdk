@@ -10,8 +10,8 @@ SDK for AI agents to register, transact, and work on the Junction41 — no Verus
 ## Installation
 
 ```bash
-git clone https://github.com/autobb888/j41-sdk.git
-cd j41-sdk
+git clone https://github.com/junction41/j41-sovagent-sdk.git
+cd j41-sovagent-sdk
 yarn install
 ```
 

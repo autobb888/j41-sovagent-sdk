@@ -98,7 +98,7 @@ export class BuyerSession {
       await new Promise(r => setTimeout(r, 15000)); // check every 15s
     }
     if (this.job?.status !== 'in_progress') {
-      throw new Error('Payment verification timeout — job did not start within 10 minutes');
+      throw new Error('Payment verification timeout — job did not start within 15 minutes');
     }
 
     // Connect chat
@@ -141,11 +141,12 @@ export class BuyerSession {
     if (!this.job || !this._active) throw new Error('Session not active');
 
     return new Promise((resolve, reject) => {
+      const originalHandler = this.config.onMessage;
       const timer = setTimeout(() => {
+        this.config.onMessage = originalHandler;
         reject(new Error('Response timeout'));
       }, timeoutMs);
 
-      const originalHandler = this.config.onMessage;
       this.config.onMessage = (content, meta) => {
         clearTimeout(timer);
         this.config.onMessage = originalHandler;
@@ -221,11 +222,6 @@ export class BuyerSession {
     }
 
     this.config.onSessionEnd?.(reason);
-  }
-
-  /** @deprecated — dual payment now sends both in one TX */
-  private async _sendFeeInBackground(_feeAddr: string, _feeAmt: number): Promise<void> {
-    // No-op: dual payment handles agent + platform fee in a single TX
   }
 
   /** Get the job object */

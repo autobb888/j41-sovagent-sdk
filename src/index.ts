@@ -88,6 +88,7 @@ export {
 // Pricing calculator
 export {
   estimateJobCost, recommendPrice, privacyPremium,
+  budgetToTokens, calculateListedPrice,
   type RecommendPriceParams, type PricePoint, type PriceRecommendation,
   type AdditionalApiCost,
 } from './pricing/calculator.js';

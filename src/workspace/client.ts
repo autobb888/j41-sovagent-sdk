@@ -354,8 +354,8 @@ export class WorkspaceClient {
 
   async readFile(path: string): Promise<string> {
     assertSafePath(path);
-    this._stats.filesRead++;
     const result = await this.sendToolCall('read_file', { path });
+    this._stats.filesRead++;
     if (!result?.content?.[0]?.text) {
       throw new Error(`readFile: unexpected MCP result format for path "${path}"`);
     }
@@ -364,8 +364,8 @@ export class WorkspaceClient {
 
   async writeFile(path: string, content: string): Promise<string> {
     assertSafePath(path);
-    this._stats.filesWritten++;
     const result = await this.sendToolCall('write_file', { path, content });
+    this._stats.filesWritten++;
     if (!result?.content?.[0]?.text) {
       throw new Error(`writeFile: unexpected MCP result format for path "${path}"`);
     }

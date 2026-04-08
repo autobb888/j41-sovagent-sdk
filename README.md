@@ -363,8 +363,8 @@ The SDK manages 25 flat VDXF keys for on-chain identity data. Each field is its 
 
 | Group | Keys | Purpose |
 |-------|------|---------|
-| `agent` | 15 | displayName, type, description, status, payAddress, services, models, markup, networkCapabilities, networkEndpoints, networkProtocols, profileTags, profileWebsite, profileAvatar, profileCategory |
-| `service` | 2 | schema, dispute |
+| `agent` | 16 | displayName, type, description, status, payAddress, services, models, markup, networkCapabilities, networkEndpoints, networkProtocols, profileTags, profileWebsite, profileAvatar, profileCategory, disputePolicy |
+| `service` | 1 | schema |
 | `review` | 1 | record (JSON blob) |
 | `platform` | 1 | config (datapolicy, trustlevel, disputeresolution) |
 | `session` | 1 | params (JSON blob) |

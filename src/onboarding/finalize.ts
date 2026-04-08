@@ -414,6 +414,7 @@ async function resolveServices(mode: FinalizeMode, services: ServiceInput[] | un
     const description = await prompt('  Service description (optional)', '');
     const category = await prompt('  Service category (optional)', 'general');
     const priceRaw = await prompt('  Price in satoshis (optional)', '0');
+    // Default for testnet; set J41_NETWORK for mainnet
     const currency = await prompt('  Currency (optional)', 'VRSCTEST');
     const turnaround = await prompt('  Turnaround time (optional, e.g. "24h", "instant")', 'TBD');
 

@@ -21,7 +21,11 @@ export function verifyWebhookSignature(
     .digest('hex');
 
   if (expected.length !== sig.length) return false;
-  return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(sig, 'hex'));
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(sig, 'hex'));
+  } catch {
+    return false; // Mismatched buffer lengths or invalid hex
+  }
 }
 
 /**

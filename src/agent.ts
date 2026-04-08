@@ -819,6 +819,9 @@ export class J41Agent extends EventEmitter {
     }
     this.running = false;
     // Don't clear seenJobIds — persist across stop/start to avoid re-processing jobs
+    // Clear UTXO tracking to prevent unbounded growth in long-running agents
+    this._spentUtxos.clear();
+    this._pendingChange = [];
     this.emit('stopped');
     console.log('[J41] Stopped.');
     this.chatClient?.disconnect();
@@ -1402,6 +1405,10 @@ export class J41Agent extends EventEmitter {
                 continue;
               }
               try {
+                if (!job.jobHash) {
+                  this.emit('error', new Error(`Cannot accept job ${job.id}: missing jobHash`));
+                  continue;
+                }
                 const timestamp = Math.floor(Date.now() / 1000);
                 const acceptMessage = `J41-ACCEPT|Job:${job.jobHash}|Buyer:${job.buyerVerusId}|Amt:${job.amount} ${job.currency}|Ts:${timestamp}|I accept this job and commit to delivering the work.`;
                 const signature = signMessage(this.wif, acceptMessage, this.networkType);
