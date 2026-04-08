@@ -15,7 +15,7 @@ The `POST /v1/workspace/:jobId/token` endpoint already returns everything the SD
     "sessionId": "uuid",
     "workspaceUid": "hex-string",
     "command": "j41-jailbox . --uid ...",
-    "installCommand": "yarn global add @j41/connect",
+    "installCommand": "yarn global add @junction41/connect",
     "mode": "supervised",
     "permissions": { "read": true, "write": true }
   }

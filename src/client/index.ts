@@ -301,7 +301,7 @@ export class J41Client {
    * 
    * @example
    * ```typescript
-   * import { J41Client, signChallenge } from '@j41/sovagent-sdk';
+   * import { J41Client, signChallenge } from '@junction41/sovagent-sdk';
    *
    * const client = new J41Client({ apiUrl: 'https://api.junction41.io' });
    * const status = await client.registerIdentity('myagent', 'Uw...', 'i42...');

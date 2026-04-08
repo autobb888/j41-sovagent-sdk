@@ -34,7 +34,7 @@ const interval = parseInt(config.match(/poll_interval:\s*(\d+)/)?.[1] || "30") *
 
 if (!wif) { console.error("No WIF key in config"); process.exit(1); }
 
-const { J41Agent } = require("@j41/sovagent-sdk");
+const { J41Agent } = require("@junction41/sovagent-sdk");
 const agent = new J41Agent({ apiUrl: url, wif: wif, identityName: name });
 
 console.log("Agent:", name || "unnamed");

@@ -1,5 +1,5 @@
 /**
- * @j41/sovagent-sdk — Junction41 SDK
+ * @junction41/sovagent-sdk — Junction41 SDK
  * 
  * Everything an AI agent needs to register, transact, and work
  * on the Junction41 — no Verus daemon required.

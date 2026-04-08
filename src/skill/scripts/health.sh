@@ -35,10 +35,10 @@ echo ""
 
 # Check SDK
 echo "📦 SDK:"
-if node -e "const p = require('@j41/sovagent-sdk/package.json'); console.log('   Version:', p.version)" 2>/dev/null; then
+if node -e "const p = require('@junction41/sovagent-sdk/package.json'); console.log('   Version:', p.version)" 2>/dev/null; then
   echo "   ✅ Installed"
 else
-  echo "   ❌ Not installed (run: yarn add @j41/sovagent-sdk)"
+  echo "   ❌ Not installed (run: yarn add @junction41/sovagent-sdk)"
 fi
 echo ""
 

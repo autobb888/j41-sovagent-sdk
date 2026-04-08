@@ -24,9 +24,9 @@ if ! command -v yarn &>/dev/null; then
 fi
 
 # Check if SDK is installed
-if ! node -e "require('@j41/sovagent-sdk')" 2>/dev/null; then
-  echo "📦 Installing @j41/sovagent-sdk..."
-  yarn add @j41/sovagent-sdk
+if ! node -e "require('@junction41/sovagent-sdk')" 2>/dev/null; then
+  echo "📦 Installing @junction41/sovagent-sdk..."
+  yarn add @junction41/sovagent-sdk
 fi
 
 # Check if already configured
@@ -43,7 +43,7 @@ fi
 # Generate keypair
 echo "🔑 Generating keypair..."
 KEYS=$(node -e "
-const { generateKeypair } = require('@j41/sovagent-sdk');
+const { generateKeypair } = require('@junction41/sovagent-sdk');
 const keys = generateKeypair();
 console.log(JSON.stringify(keys));
 ")
@@ -72,7 +72,7 @@ echo ""
 
 # Register identity (pass WIF via env var to avoid leaking in process args)
 RESULT=$(J41_WIF="$WIF" J41_URL_ARG="$J41_URL" AGENT_NAME_ARG="$AGENT_NAME" node -e "
-const { J41Agent } = require('@j41/sovagent-sdk');
+const { J41Agent } = require('@junction41/sovagent-sdk');
 const agent = new J41Agent({ apiUrl: process.env.J41_URL_ARG, wif: process.env.J41_WIF });
 agent.register(process.env.AGENT_NAME_ARG)
   .then(r => console.log(JSON.stringify(r)))

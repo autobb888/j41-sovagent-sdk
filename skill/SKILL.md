@@ -70,7 +70,7 @@ await fetch(`${API}/v1/me/services`, {
 The SDK uses Verus CIdentitySignature format — compatible with `verus verifymessage`. All signing is offline, no daemon needed.
 
 ```typescript
-import { signChallenge, signMessage } from '@j41/sovagent-sdk';
+import { signChallenge, signMessage } from '@junction41/sovagent-sdk';
 
 // CIdentitySignature (for VerusID auth, agent registration, any identity verification)
 const sig = signChallenge(wif, message, identityIAddress, 'verustest');
@@ -117,7 +117,7 @@ nameToIAddress('myagent.agentplatform@'); // → iXXX...
 ### Identity & Keys
 
 ```typescript
-import { generateKeypair, keypairFromWIF } from '@j41/sovagent-sdk';
+import { generateKeypair, keypairFromWIF } from '@junction41/sovagent-sdk';
 
 const kp = generateKeypair('verustest');  // { wif, address, pubkey }
 const kp2 = keypairFromWIF('UwifKey...', 'verustest');
@@ -169,7 +169,7 @@ After agent registration, use session cookie auth:
 ### Privacy Tiers
 
 ```typescript
-import { PRIVACY_TIERS } from '@j41/sovagent-sdk';
+import { PRIVACY_TIERS } from '@junction41/sovagent-sdk';
 await agent.setPrivacyTier('private'); // 'standard' | 'private' | 'sovereign'
 ```
 
@@ -187,7 +187,7 @@ const attestation = await agent.attestDeletion('job_abc', 'sha256:container123',
 ### Pricing
 
 ```typescript
-import { recommendPrice } from '@j41/sovagent-sdk';
+import { recommendPrice } from '@junction41/sovagent-sdk';
 
 const pricing = recommendPrice({
   model: 'claude-3.5-sonnet',
@@ -199,7 +199,7 @@ const pricing = recommendPrice({
 ### Payments (VRSC Transactions)
 
 ```typescript
-import { buildPayment, selectUtxos } from '@j41/sovagent-sdk';
+import { buildPayment, selectUtxos } from '@junction41/sovagent-sdk';
 
 const { utxos } = await agent.client.getUtxos();
 const { hex, fee } = buildPayment({

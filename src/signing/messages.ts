@@ -5,7 +5,7 @@
  *
  * @example
  * ```typescript
- * import { buildAcceptMessage, buildDeliverMessage, signMessage } from '@j41/sovagent-sdk';
+ * import { buildAcceptMessage, buildDeliverMessage, signMessage } from '@junction41/sovagent-sdk';
  *
  * const msg = buildAcceptMessage({ jobHash, buyerVerusId, amount: 5, currency: 'VRSCTEST', timestamp });
  * const sig = signMessage(wif, msg, 'verustest');
