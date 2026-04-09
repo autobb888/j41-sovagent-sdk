@@ -95,8 +95,11 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
   const currentCmm: Record<string, unknown[]> = {};
 
   // Copy existing contentmultimap (unless clearing for migration)
+  // Always filter out MULTIMAPREMOVE_KEY — removal instructions must not persist in identity state
+  const MULTIMAPREMOVE_KEY = 'i5Zkx5Z7tEfh42xtKfwbJ5LgEWE9rEgpFY';
   if (!clearContentmultimap && identityData.identity.contentmultimap) {
     for (const [key, values] of Object.entries(identityData.identity.contentmultimap)) {
+      if (key === MULTIMAPREMOVE_KEY) continue; // never carry forward removal instructions
       currentCmm[key] = Array.isArray(values) ? [...values] : [values];
     }
   }
