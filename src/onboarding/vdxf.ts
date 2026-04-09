@@ -15,6 +15,7 @@ import type {
 // --- Constants ---
 
 export const DATA_DESCRIPTOR_KEY = 'i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv';
+export const MULTIMAPREMOVE_KEY = 'i5Zkx5Z7tEfh42xtKfwbJ5LgEWE9rEgpFY'; // vrsc::identity.multimapremove
 
 /**
  * @deprecated Parent group keys removed in 25-key flat format (2026-03-28).
@@ -791,4 +792,183 @@ export function mergeContentMultimap(
   }
 
   return merged;
+}
+
+// --- VDXF Update (remove + rewrite) ---
+
+/**
+ * Build a contentmultimapremove payload for specific VDXF keys.
+ * Uses action 3 (remove all values under a key) for each target.
+ *
+ * @param identityName - e.g. "myagent.agentplatform@"
+ * @param vdxfKeyAddresses - i-addresses of VDXF keys to remove
+ * @returns updateidentity-ready JSON object with removal instructions
+ */
+export function buildContentMultimapRemove(
+  identityName: string,
+  vdxfKeyAddresses: string[],
+): Record<string, unknown> {
+  const clean = identityName.replace(/@$/, '');
+  const parts = clean.split('.');
+  const name = parts[0] || clean;
+  const parent = parts.length > 1 ? parts.slice(1).join('.') : 'agentplatform';
+
+  const removeEntries = vdxfKeyAddresses.map(iAddr => ({
+    [MULTIMAPREMOVE_KEY]: {
+      version: 1,
+      action: 3,
+      entrykey: iAddr,
+    },
+  }));
+
+  return {
+    name,
+    parent,
+    contentmultimap: {
+      [MULTIMAPREMOVE_KEY]: removeEntries,
+    },
+  };
+}
+
+export interface VdxfUpdateParams {
+  /** Authenticated agent — needs client.broadcast, client.getChainInfo, client.getIdentityRaw, client.getUtxos */
+  agent: { client: any; _client?: any };
+  /** Full identity name, e.g. "myagent.agentplatform@" */
+  identityName: string;
+  /** Map of agent field name → new value (keys from VDXF_KEYS.agent) */
+  fieldsToUpdate: Record<string, string>;
+  /** Verus network */
+  chain: 'verus' | 'verustest';
+  /** Agent WIF for signing transactions */
+  wif: string;
+  /** Progress callback for UI feedback */
+  onProgress?: (step: string) => void;
+}
+
+export interface VdxfUpdateResult {
+  removeTxid: string;
+  writeTxid: string;
+  blocksWaited: number;
+}
+
+/**
+ * Remove old VDXF values and write new ones in two separate transactions.
+ * Waits for block confirmation between remove and write (required by Verus daemon).
+ *
+ * @throws If block confirmation times out (20 minutes) or transaction fails
+ */
+export async function removeAndRewriteVdxfFields(
+  params: VdxfUpdateParams,
+): Promise<VdxfUpdateResult> {
+  const { agent, identityName, fieldsToUpdate, chain, wif, onProgress } = params;
+  const client = agent.client || agent._client;
+  const log = (msg: string) => { if (onProgress) onProgress(msg); };
+
+  // Resolve field names to i-addresses
+  const fieldToIAddr: Record<string, string> = {};
+  for (const [group, keys] of Object.entries(VDXF_KEYS)) {
+    for (const [field, iAddr] of Object.entries(keys as Record<string, string>)) {
+      fieldToIAddr[field] = iAddr;
+    }
+  }
+
+  const iAddressesToRemove: string[] = [];
+  for (const fieldName of Object.keys(fieldsToUpdate)) {
+    const iAddr = fieldToIAddr[fieldName];
+    if (!iAddr) throw new Error(`Unknown VDXF field: ${fieldName}`);
+    iAddressesToRemove.push(iAddr);
+  }
+
+  // ── PHASE 1: Remove old values ──
+  log('Phase 1: Removing old VDXF values...');
+
+  const identityData = await client.getIdentityRaw();
+  const utxos = await client.getUtxos();
+
+  const { buildIdentityUpdateTx } = await import('../identity/update.js');
+
+  // Build remove payload — pass as vdxfAdditions under MULTIMAPREMOVE_KEY
+  const removeEntries = iAddressesToRemove.map(iAddr => ({
+    [MULTIMAPREMOVE_KEY]: {
+      version: 1,
+      action: 3,
+      entrykey: iAddr,
+    },
+  }));
+
+  const removeTxHex = buildIdentityUpdateTx({
+    wif,
+    identityData,
+    utxos,
+    vdxfAdditions: {
+      [MULTIMAPREMOVE_KEY]: removeEntries,
+    },
+    network: chain,
+  });
+
+  const removeResult = await client.broadcast(removeTxHex);
+  const removeTxid = removeResult.txid || removeResult;
+  log(`Remove TX broadcast: ${removeTxid}`);
+
+  // ── PHASE 2: Wait for block confirmation ──
+  log('Phase 2: Waiting for block confirmation (can take 1-2 minutes)...');
+
+  const chainInfoBefore = await client.getChainInfo();
+  const removeHeight = chainInfoBefore.blockHeight;
+  let currentHeight = removeHeight;
+  let blocksWaited = 0;
+  const MAX_WAIT_MS = 20 * 60 * 1000; // 20 minutes
+  const POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
+  const startTime = Date.now();
+
+  while (currentHeight <= removeHeight) {
+    if (Date.now() - startTime > MAX_WAIT_MS) {
+      throw new Error(
+        `Block confirmation timed out after 20 minutes. Remove TX (${removeTxid}) may still be pending. ` +
+        `Do NOT retry the remove — wait for it to confirm, then run the write step manually.`
+      );
+    }
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    const info = await client.getChainInfo();
+    currentHeight = info.blockHeight;
+    blocksWaited++;
+    if (blocksWaited % 2 === 0) {
+      log(`Still waiting... (${Math.round((Date.now() - startTime) / 1000)}s, height: ${currentHeight}, need: >${removeHeight})`);
+    }
+  }
+  log(`Block confirmed at height ${currentHeight} (waited ${blocksWaited * 30}s)`);
+
+  // ── PHASE 3: Write new values ──
+  log('Phase 3: Writing new VDXF values...');
+
+  // Re-fetch identity data and UTXOs (remove tx consumed them)
+  const freshIdentityData = await client.getIdentityRaw();
+  const freshUtxos = await client.getUtxos();
+
+  // Build write payload — each field gets its own entry
+  const writeAdditions: Record<string, unknown[]> = {};
+  for (const [fieldName, newValue] of Object.entries(fieldsToUpdate)) {
+    const iAddr = fieldToIAddr[fieldName];
+    writeAdditions[iAddr] = [makeSubDD(iAddr, newValue)];
+  }
+
+  const writeTxHex = buildIdentityUpdateTx({
+    wif,
+    identityData: freshIdentityData,
+    utxos: freshUtxos,
+    vdxfAdditions: writeAdditions,
+    network: chain,
+  });
+
+  const writeResult = await client.broadcast(writeTxHex);
+  const writeTxid = writeResult.txid || writeResult;
+  log(`Write TX broadcast: ${writeTxid}`);
+
+  // Refresh agent on platform
+  try {
+    await client.refreshAgent?.();
+  } catch {}
+
+  log('VDXF update complete!');
+  return { removeTxid, writeTxid, blocksWaited };
 }

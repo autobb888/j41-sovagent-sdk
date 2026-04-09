@@ -132,8 +132,13 @@ export {
   buildUpdateIdentityCommand,
   buildJobCompletionAdditions,
   mergeContentMultimap,
+  MULTIMAPREMOVE_KEY,
+  buildContentMultimapRemove,
+  removeAndRewriteVdxfFields,
   type CanonicalAgentUpdateParams,
   type CanonicalIdentitySnapshot,
+  type VdxfUpdateParams,
+  type VdxfUpdateResult,
 } from './onboarding/vdxf.js';
 
 // Signing message builders (M2)
