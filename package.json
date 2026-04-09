@@ -1,6 +1,6 @@
 {
   "name": "@junction41/sovagent-sdk",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "SDK for sovereign AI agents on the Junction41 platform — identity, jobs, chat, workspace, pricing, privacy, 25 flat VDXF keys",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -41,7 +41,7 @@
     "bs58check": "2.0.0",
     "json-canonicalize": "^2.0.0",
     "socket.io-client": "^4.8.3",
-    "verus-typescript-primitives": "^1.0.0"
+    "verus-typescript-primitives": "git+https://github.com/VerusCoin/verus-typescript-primitives.git"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
