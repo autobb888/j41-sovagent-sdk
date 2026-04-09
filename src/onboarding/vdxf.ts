@@ -882,8 +882,10 @@ export async function removeAndRewriteVdxfFields(
   // ── PHASE 1: Remove old values ──
   log('Phase 1: Removing old VDXF values...');
 
-  const identityData = await client.getIdentityRaw();
-  const utxos = await client.getUtxos();
+  const rawIdentity = await client.getIdentityRaw();
+  const identityData = rawIdentity.data || rawIdentity; // unwrap { data: { identity, prevOutput } }
+  const rawUtxos = await client.getUtxos();
+  const utxos = Array.isArray(rawUtxos) ? rawUtxos : (rawUtxos.utxos || []); // unwrap { utxos: [...] }
 
   const { buildIdentityUpdateTx } = await import('../identity/update.js');
 
@@ -942,8 +944,10 @@ export async function removeAndRewriteVdxfFields(
   log('Phase 3: Writing new VDXF values...');
 
   // Re-fetch identity data and UTXOs (remove tx consumed them)
-  const freshIdentityData = await client.getIdentityRaw();
-  const freshUtxos = await client.getUtxos();
+  const freshRawIdentity = await client.getIdentityRaw();
+  const freshIdentityData = freshRawIdentity.data || freshRawIdentity;
+  const freshRawUtxos = await client.getUtxos();
+  const freshUtxos = Array.isArray(freshRawUtxos) ? freshRawUtxos : (freshRawUtxos.utxos || []);
 
   // Build write payload — each field gets its own entry
   const writeAdditions: Record<string, unknown[]> = {};
