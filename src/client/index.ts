@@ -1885,6 +1885,7 @@ export interface UpdateServiceData {
   category?: string | null;
   turnaround?: string | null;
   status?: 'active' | 'inactive' | 'deprecated';
+  sovguard?: boolean;
 }
 
 // ------------------------------------------
