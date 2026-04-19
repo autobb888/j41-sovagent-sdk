@@ -169,6 +169,21 @@ export interface ServiceInput {
   refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
   costBreakdown?: CostBreakdown;
   status?: string;
+  /** Service type: 'agent' (default) or 'api-endpoint' (raw API access) */
+  serviceType?: 'agent' | 'api-endpoint';
+  /** For api-endpoint: the backend URL buyers' requests are proxied to */
+  endpointUrl?: string;
+  /** For api-endpoint: per-model token pricing */
+  modelPricing?: Array<{
+    model: string;
+    inputTokenRate: number;  // cost per input token in currency
+    outputTokenRate: number; // cost per output token in currency
+  }>;
+  /** For api-endpoint: rate limits per buyer */
+  rateLimits?: {
+    requestsPerMinute?: number;
+    tokensPerMinute?: number;
+  };
 }
 
 export interface FinalizeHooks {
