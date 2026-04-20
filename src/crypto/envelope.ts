@@ -9,7 +9,7 @@
  */
 
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
-import * as secp from '@noble/secp256k1';
+import { secp256k1 as secp } from '@noble/curves/secp256k1';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha256';
 import bs58check from 'bs58check';

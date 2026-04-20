@@ -970,7 +970,7 @@ export async function removeAndRewriteVdxfFields(
 
   // Refresh agent on platform
   try {
-    await client.refreshAgent?.();
+    await client.refreshAgent?.(identityName);
   } catch {}
 
   log('VDXF update complete!');
