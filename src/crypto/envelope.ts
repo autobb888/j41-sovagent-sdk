@@ -205,3 +205,84 @@ export function openAccessEnvelope(
 
   return JSON.parse(decrypted.toString('utf8')) as AccessPayload;
 }
+
+/**
+ * Verify an access envelope's dispatcher signature.
+ * Resolves the seller's R-address via J41 platform API, then verifies
+ * the signature using bitcoinjs-message.
+ *
+ * @param envelope - The AccessEnvelope to verify
+ * @param client - An authenticated J41Client (or any object with getAgent method)
+ * @param sellerVerusId - The seller's VerusID to verify against
+ * @param network - 'verus' or 'verustest'
+ * @returns true if signature is valid, false otherwise
+ */
+export async function verifyAccessEnvelope(
+  envelope: AccessEnvelope,
+  client: { getAgent(verusId: string): Promise<any> },
+  sellerVerusId: string,
+  network: 'verus' | 'verustest' = 'verustest',
+): Promise<boolean> {
+  const bitcoinMessage = require('bitcoinjs-message');
+  const utxolib = require('@bitgo/utxo-lib');
+  const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
+
+  // Resolve seller's R-address from platform
+  const agent = await client.getAgent(sellerVerusId);
+  const rAddress = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address;
+  if (!rAddress) throw new Error('Could not resolve seller R-address');
+
+  // Reconstruct the canonical string that was signed
+  const canonical = `J41-ACCESS-ENVELOPE|Cipher:${envelope.ciphertext}|IV:${envelope.iv}|Tag:${envelope.authTag}|DispPub:${envelope.dispatcherEphPub}|Ts:${envelope.timestamp}|Expires:${envelope.expiresAt}`;
+
+  try {
+    return bitcoinMessage.verify(canonical, rAddress, envelope.dispatcherSignature, net.messagePrefix);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify an access request's buyer signature.
+ * Resolves the buyer's R-address via J41 platform API, then verifies
+ * the signature using bitcoinjs-message.
+ *
+ * Used by the dispatcher to verify the buyer is who they claim to be
+ * before minting an API key.
+ *
+ * @param request - The AccessRequest to verify
+ * @param client - An authenticated J41Client (or any object with getAgent method)
+ * @param network - 'verus' or 'verustest'
+ * @returns true if signature is valid, false otherwise
+ */
+export async function verifyAccessRequest(
+  request: AccessRequest,
+  client: { getAgent(verusId: string): Promise<any> },
+  network: 'verus' | 'verustest' = 'verustest',
+): Promise<boolean> {
+  const bitcoinMessage = require('bitcoinjs-message');
+  const utxolib = require('@bitgo/utxo-lib');
+  const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
+
+  // The buyer signed with their R-address (buyerVerusId IS the R-address from wifToAddress)
+  // But if J41 forwarded a resolved i-address, we need to look up the R-address
+  let rAddress = request.buyerVerusId;
+
+  // If it looks like an i-address, resolve to R-address
+  if (rAddress.startsWith('i') && rAddress.length > 30) {
+    try {
+      const agent = await client.getAgent(rAddress);
+      rAddress = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address || rAddress;
+    } catch {
+      // Can't resolve — try verification with what we have
+    }
+  }
+
+  const canonical = `J41-ACCESS-REQUEST|Buyer:${request.buyerVerusId}|Seller:${request.sellerVerusId}|EphPub:${request.ephemeralPubKey}|Nonce:${request.nonce}|Ts:${request.timestamp}`;
+
+  try {
+    return bitcoinMessage.verify(canonical, rAddress, request.buyerSignature, net.messagePrefix);
+  } catch {
+    return false;
+  }
+}

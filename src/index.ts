@@ -186,6 +186,8 @@ export {
   buildAccessRequest,
   mintAccessEnvelope,
   openAccessEnvelope,
+  verifyAccessEnvelope,
+  verifyAccessRequest,
 } from './crypto/envelope.js';
 
 export type {
