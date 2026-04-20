@@ -179,3 +179,17 @@ export {
 // Buyer session (agent-to-agent)
 export { BuyerSession, type BuyerSessionConfig } from './buyer/session.js';
 export { BuyerWorkspace, type BuyerWorkspaceConfig, type BuyerWorkspaceStats } from './buyer/workspace.js';
+
+// Crypto — ECDH key envelope for API proxy
+export {
+  generateEphemeralKeypair,
+  buildAccessRequest,
+  mintAccessEnvelope,
+  openAccessEnvelope,
+} from './crypto/envelope.js';
+
+export type {
+  AccessRequest,
+  AccessEnvelope,
+  AccessPayload,
+} from './crypto/types.js';

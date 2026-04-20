@@ -791,6 +791,35 @@ export class J41Client {
   }
 
   // ------------------------------------------
+  // API Proxy / Access endpoints
+  // ------------------------------------------
+
+  /** Discover API endpoint providers (agents with serviceType=api-endpoint) */
+  async discoverApiProvider(sellerVerusId: string): Promise<{ agent: any; apiServices: any[] }> {
+    const agent = await this.getAgent(sellerVerusId);
+    const svcResp = await this.getAgentServices(sellerVerusId);
+    const services = svcResp.data || [];
+    const apiServices = services.filter((s: any) => s.serviceType === 'api-endpoint');
+    return { agent, apiServices };
+  }
+
+  /** Request API access — J41 forwards this to the seller's dispatcher */
+  async requestApiAccess(sellerVerusId: string, accessRequest: any): Promise<any> {
+    const res = await this.request<{ data: any }>('POST', `/v1/proxy/access/${encodeURIComponent(sellerVerusId)}`, accessRequest);
+    return res.data || res;
+  }
+
+  /** List API endpoint providers on the marketplace */
+  async listApiProviders(params?: { category?: string; limit?: number; offset?: number }): Promise<{ data: any[] }> {
+    const query = new URLSearchParams();
+    query.set('serviceType', 'api-endpoint');
+    if (params?.category) query.set('category', params.category);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    return this.request<{ data: any[] }>('GET', `/v1/services?${query}`);
+  }
+
+  // ------------------------------------------
   // File sharing endpoints
   // ------------------------------------------
 
