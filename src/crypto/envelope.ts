@@ -12,6 +12,7 @@ import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
 import * as secp from '@noble/secp256k1';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha256';
+import bs58check from 'bs58check';
 import { signMessage } from '../identity/signer.js';
 import { wifToAddress } from '../tx/payment.js';
 import type { AccessRequest, AccessEnvelope, AccessPayload } from './types.js';
@@ -23,13 +24,13 @@ const HKDF_INFO = 'j41-key-envelope-v1';
 
 // --- Helpers ---
 
-/** Decode a WIF private key to raw 32-byte Uint8Array */
+/** Decode a WIF private key to raw 32-byte Uint8Array. Validates length. */
 function wifToPrivateKey(wif: string): Uint8Array {
-  // WIF format: version(1) + privkey(32) + [compressed flag(1)] + checksum(4)
-  // bs58check.decode strips the checksum, leaving version + privkey + optional flag
-  const bs58check = require('bs58check');
   const decoded: Buffer = bs58check.decode(wif);
-  // Slice out the 32-byte private key (skip version byte at index 0)
+  // WIF: version(1) + privkey(32) + optional compressed flag(1)
+  if (decoded.length !== 33 && decoded.length !== 34) {
+    throw new Error(`Invalid WIF length: ${decoded.length} (expected 33 or 34)`);
+  }
   return new Uint8Array(decoded.slice(1, 33));
 }
 
@@ -64,6 +65,9 @@ export function generateEphemeralKeypair(): { privateKey: Uint8Array; publicKey:
 /**
  * Build a signed access request (buyer side).
  *
+ * The returned `nonce` MUST be retained by the caller — it is needed to
+ * decrypt the response envelope via `openAccessEnvelope(envelope, ephPriv, request.nonce)`.
+ *
  * @param buyerWif - Buyer's WIF private key (for signing)
  * @param sellerVerusId - Seller's VerusID (e.g. "iSeller..." or "seller.agentplatform@")
  * @param ephPub - Ephemeral public key from generateEphemeralKeypair()
@@ -97,7 +101,7 @@ export function buildAccessRequest(
  * Mint an encrypted access envelope (dispatcher/seller side).
  *
  * Performs ECDH with the buyer's ephemeral public key, derives an AES key
- * via HKDF, encrypts the payload, and signs the envelope.
+ * via HKDF, encrypts the payload, and signs the FULL envelope (ciphertext + iv + authTag).
  *
  * @param request - The buyer's AccessRequest
  * @param dispatcherWif - Dispatcher's WIF private key (for ECDH + signing)
@@ -117,7 +121,7 @@ export function mintAccessEnvelope(
   // ECDH: compute shared secret with buyer's ephemeral public key
   const buyerEphPub = hexToBytes(request.ephemeralPubKey);
   const sharedPoint = secp.getSharedSecret(dispPrivKey, buyerEphPub, false); // uncompressed (65 bytes)
-  const sharedX = sharedPoint.slice(1, 33); // x-coordinate only (32 bytes)
+  const sharedX = sharedPoint.slice(1, 33); // x-coordinate only (32 bytes) — this is a COPY
 
   // HKDF: derive AES-256 key
   const nonce = hexToBytes(request.nonce);
@@ -130,21 +134,24 @@ export function mintAccessEnvelope(
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
-  // Sign the envelope
+  // Sign the FULL envelope — ciphertext + iv + authTag all committed
   const timestamp = Math.floor(Date.now() / 1000);
   const ciphertextB64 = encrypted.toString('base64');
-  const canonical = `J41-ACCESS-ENVELOPE|Cipher:${ciphertextB64.slice(0, 32)}|DispPub:${bytesToHex(dispPubKey)}|Ts:${timestamp}|Expires:${payload.expiresAt}`;
+  const ivHex = bytesToHex(iv);
+  const authTagHex = bytesToHex(authTag);
+  const canonical = `J41-ACCESS-ENVELOPE|Cipher:${ciphertextB64}|IV:${ivHex}|Tag:${authTagHex}|DispPub:${bytesToHex(dispPubKey)}|Ts:${timestamp}|Expires:${payload.expiresAt}`;
   const dispatcherSignature = signMessage(dispatcherWif, canonical, network);
 
-  // Zero sensitive material
+  // Zero ALL sensitive material
   secureZero(dispPrivKey);
-  secureZero(sharedX);
-  if (aesKey instanceof Uint8Array) secureZero(aesKey);
+  secureZero(sharedPoint); // full 65-byte ECDH output
+  secureZero(sharedX);     // the x-coord copy
+  secureZero(aesKey);
 
   return {
     ciphertext: ciphertextB64,
-    iv: bytesToHex(iv),
-    authTag: bytesToHex(authTag),
+    iv: ivHex,
+    authTag: authTagHex,
     dispatcherEphPub: bytesToHex(dispPubKey),
     dispatcherSignature,
     expiresAt: payload.expiresAt,
@@ -160,13 +167,19 @@ export function mintAccessEnvelope(
  *
  * @param envelope - The AccessEnvelope from the dispatcher
  * @param ephPrivKey - Buyer's ephemeral private key (from generateEphemeralKeypair)
- * @param nonce - The nonce used in the original AccessRequest (hex string)
+ * @param nonce - The nonce from the original AccessRequest (hex, 32 chars / 16 bytes).
+ *               MUST be the same nonce returned by buildAccessRequest().
  */
 export function openAccessEnvelope(
   envelope: AccessEnvelope,
   ephPrivKey: Uint8Array,
   nonce: string,
 ): AccessPayload {
+  // Validate nonce format
+  if (!nonce || nonce.length !== 32 || !/^[0-9a-f]+$/i.test(nonce)) {
+    throw new Error('Invalid nonce: must be 32 hex characters (16 bytes). Use the nonce from buildAccessRequest().');
+  }
+
   // ECDH: compute shared secret with dispatcher's public key
   const dispPub = hexToBytes(envelope.dispatcherEphPub);
   const sharedPoint = secp.getSharedSecret(ephPrivKey, dispPub, false);
@@ -185,9 +198,10 @@ export function openAccessEnvelope(
   decipher.setAuthTag(authTag);
   const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
-  // Zero sensitive material
+  // Zero ALL sensitive material
+  secureZero(sharedPoint);
   secureZero(sharedX);
-  if (aesKey instanceof Uint8Array) secureZero(aesKey);
+  secureZero(aesKey);
 
   return JSON.parse(decrypted.toString('utf8')) as AccessPayload;
 }
