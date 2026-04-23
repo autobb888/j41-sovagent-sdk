@@ -819,6 +819,79 @@ export class J41Client {
     return this.request<{ data: any[] }>('GET', `/v1/services?${query}`);
   }
 
+  /**
+   * Call a proxied API endpoint (helper for buyers who've already exchanged a key).
+   *
+   * Handles the common case: take an API key + endpoint URL obtained from a decrypted
+   * AccessEnvelope, POST an OpenAI-compatible body, and return the parsed response with
+   * J41 headers. Streaming responses return the raw Response object so the caller can
+   * read the body stream themselves.
+   *
+   * Throws on HTTP >= 400 with a J41Error-style message including the X-J41-* context.
+   */
+  async callProxied(opts: {
+    endpointUrl: string;
+    apiKey: string;
+    path?: string;
+    body: Record<string, unknown>;
+    timeoutMs?: number;
+  }): Promise<{
+    ok: boolean;
+    status: number;
+    headers: Record<string, string>;
+    body: unknown;
+    sessionId?: string;
+    creditRemaining?: number;
+    model?: string;
+    raw: Response;
+  }> {
+    const base = opts.endpointUrl.replace(/\/$/, '');
+    const path = opts.path || '/v1/chat/completions';
+    const url = `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+
+    const controller = new AbortController();
+    const timer = opts.timeoutMs ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${opts.apiKey}`,
+        },
+        body: JSON.stringify(opts.body),
+        signal: controller.signal,
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+
+    const headers: Record<string, string> = {};
+    res.headers.forEach((v, k) => { headers[k] = v; });
+    const sessionId = headers['x-j41-session'];
+    const creditRaw = headers['x-j41-credit-remaining'];
+    const creditRemaining = creditRaw != null ? Number.parseFloat(creditRaw) : undefined;
+    const model = headers['x-j41-model'];
+
+    const isStream = opts.body.stream === true;
+    let body: unknown = null;
+    if (!isStream) {
+      const text = await res.text();
+      try { body = JSON.parse(text); } catch { body = text; }
+    }
+
+    if (!res.ok && !isStream) {
+      const errMsg = (body && typeof body === 'object' && 'error' in (body as object) && (body as any).error) || `HTTP ${res.status}`;
+      const err = new Error(`Proxy call failed: ${typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg)} (session=${sessionId || 'n/a'}, credit=${creditRaw || 'n/a'})`);
+      (err as any).statusCode = res.status;
+      (err as any).responseHeaders = headers;
+      (err as any).responseBody = body;
+      throw err;
+    }
+
+    return { ok: res.ok, status: res.status, headers, body, sessionId, creditRemaining, model, raw: res };
+  }
+
   // ------------------------------------------
   // File sharing endpoints
   // ------------------------------------------
@@ -1389,6 +1462,12 @@ export class J41Client {
     return res.data;
   }
 
+  /** Submit a signed review for an API endpoint proxy session (no job hash — uses sessionId). */
+  async submitApiSessionReview(data: SubmitApiSessionReviewData): Promise<{ id: string }> {
+    const res = await this.request<{ data: { id: string } }>('POST', '/v1/reviews/api-session', data);
+    return res.data;
+  }
+
   /** Get the message format that needs to be signed for a review */
   async getReviewMessage(params: { agentVerusId: string; jobHash: string; message?: string; rating?: number; timestamp?: number }): Promise<{ message: string; timestamp: number; instructions: string[] }> {
     const query = new URLSearchParams();
@@ -1712,6 +1791,14 @@ export interface RegisterServiceData {
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
   resolutionWindow?: number;
   refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
+  /** 'agent' (default) or 'api-endpoint' — the latter is for raw LLM access sellers */
+  serviceType?: 'agent' | 'api-endpoint';
+  /** Seller's upstream LLM URL. Private: only returned on owner reads, not public listings. */
+  endpointUrl?: string;
+  /** Per-model token pricing for api-endpoint services */
+  modelPricing?: Array<{ model: string; inputTokenRate: number; outputTokenRate: number }>;
+  /** Per-buyer rate limits for api-endpoint services */
+  rateLimits?: { requestsPerMinute?: number; tokensPerMinute?: number };
 }
 
 export interface Job {
@@ -2353,6 +2440,19 @@ export interface SubmitReviewData {
   agentVerusId: string;
   buyerVerusId: string;
   jobHash: string;
+  message?: string;
+  rating?: number;
+  timestamp: number;
+  signature: string;
+}
+
+export interface SubmitApiSessionReviewData {
+  agentVerusId: string;
+  buyerVerusId: string;
+  sessionId: string;
+  model?: string;
+  requestCount?: number;
+  totalSpent?: number;
   message?: string;
   rating?: number;
   timestamp: number;

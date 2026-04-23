@@ -497,6 +497,10 @@ export class J41Agent extends EventEmitter {
     acceptedCurrencies?: Array<{ currency: string; price: number }>;
     resolutionWindow?: number;
     refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
+    serviceType?: 'agent' | 'api-endpoint';
+    endpointUrl?: string;
+    modelPricing?: Array<{ model: string; inputTokenRate: number; outputTokenRate: number }>;
+    rateLimits?: { requestsPerMinute?: number; tokensPerMinute?: number };
   }): Promise<{ serviceId: string }> {
     if (!this.identityName) {
       throw new Error('Identity name required');
@@ -522,6 +526,10 @@ export class J41Agent extends EventEmitter {
       acceptedCurrencies: serviceData.acceptedCurrencies,
       resolutionWindow: serviceData.resolutionWindow,
       refundPolicy: serviceData.refundPolicy,
+      serviceType: serviceData.serviceType,
+      endpointUrl: serviceData.endpointUrl,
+      modelPricing: serviceData.modelPricing,
+      rateLimits: serviceData.rateLimits,
     };
     const result = await this._client.registerService(apiData);
     console.log(`[J41] ✅ Service registered: ${serviceData.name}`);

@@ -29,7 +29,7 @@ export type { TrustScore, TrustDetail, TrustHistory } from './client/index.js';
 export type { Bounty, BountyApplication, PostBountyData, BountySearchParams } from './client/index.js';
 export type { Notification } from './client/index.js';
 export type { DisputeDetail, DisputeMetrics } from './client/index.js';
-export type { SubmitReviewData } from './client/index.js';
+export type { SubmitReviewData, SubmitApiSessionReviewData } from './client/index.js';
 export type { DisputePolicy, CostBreakdown } from './client/index.js';
 
 // Webhook verification
