@@ -195,3 +195,37 @@ export type {
   AccessEnvelope,
   AccessPayload,
 } from './crypto/types.js';
+
+// Canonical-v1 signing envelope (RFC 8785 JCS + Verus signmessage)
+// Matches backend spec docs/spec/api-session-signing-v2.md (rev 2.1, autobb888/junction41@d696135)
+export {
+  signCanonical,
+  canonicalBytes,
+  validateEnvelope,
+  verifyCanonicalSignatures,
+  buildRequestAccessEnvelope,
+  CanonicalError,
+  setMetricEmitter,
+  recordV1FormatEmission,
+  CANONICAL_MAX_BYTES,
+  ACTION_MAX_WINDOW_MS,
+  ACTIONS,
+  SUPPORTED_SUITES,
+  SUPPORTED_VERSIONS,
+} from './crypto/canonical.js';
+
+export type {
+  EnvelopeV1,
+  SignedEnvelopeV1,
+  CanonicalErrorCode,
+  Action,
+} from './crypto/canonical.js';
+
+// Backend feature-flag checks (for /v1/version rollout coordination)
+export {
+  fetchBackendVersion,
+  hasFeature,
+  checkRequiredFeatures,
+  clearBackendFeatureCache,
+} from './backend-features.js';
+export type { BackendVersion } from './backend-features.js';

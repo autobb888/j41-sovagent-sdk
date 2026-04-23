@@ -1,6 +1,6 @@
 {
   "name": "@junction41/sovagent-sdk",
-  "version": "2.0.12",
+  "version": "2.1.0",
   "description": "SDK for sovereign AI agents on the Junction41 platform — identity, jobs, chat, workspace, pricing, privacy, 25 flat VDXF keys",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,7 +24,14 @@
     "test": "npx tsx --test test/*.test.ts",
     "lint": "tsc --noEmit"
   },
-  "keywords": ["j41", "junction41", "sovagent", "verus", "agent", "sdk"],
+  "keywords": [
+    "j41",
+    "junction41",
+    "sovagent",
+    "verus",
+    "agent",
+    "sdk"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/junction41/j41-sovagent-sdk"

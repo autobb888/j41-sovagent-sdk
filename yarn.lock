@@ -49,15 +49,10 @@
   dependencies:
     "@noble/hashes" "1.8.0"
 
-"@noble/hashes@1.8.0", "@noble/hashes@^1.4.0":
+"@noble/hashes@1.8.0":
   version "1.8.0"
   resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-1.8.0.tgz#cee43d801fcef9644b11b8194857695acd5f815a"
   integrity sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==
-
-"@noble/secp256k1@^3.0.0":
-  version "3.0.0"
-  resolved "https://registry.yarnpkg.com/@noble/secp256k1/-/secp256k1-3.0.0.tgz#29711361db8f37b1b7e0b8d80c933013fc887475"
-  integrity sha512-NJBaR352KyIvj3t6sgT/+7xrNyF9Xk9QlLSIqUGVUYlsnDTAUqY8LOmwpcgEx4AMJXRITQ5XEVHD+mMaPfr3mg==
 
 "@socket.io/component-emitter@~3.1.0":
   version "3.1.2"
@@ -161,12 +156,7 @@ bip66@^1.1.5:
   dependencies:
     safe-buffer "^5.0.1"
 
-bitcoin-ops@^1.3.0:
-  version "1.4.1"
-  resolved "https://registry.yarnpkg.com/bitcoin-ops/-/bitcoin-ops-1.4.1.tgz#e45de620398e22fd4ca6023de43974ff42240278"
-  integrity sha512-pef6gxZFztEhaE9RY9HmWVmiIHqCb2OyS4HPKkpc6CIiiOa3Qmuoylxc5P2EkU3w+5eTSifI9SEZC88idAIGow==
-
-"bitcoin-ops@git+https://github.com/VerusCoin/bitcoin-ops":
+bitcoin-ops@^1.3.0, "bitcoin-ops@git+https://github.com/VerusCoin/bitcoin-ops":
   version "1.4.1"
   resolved "git+https://github.com/VerusCoin/bitcoin-ops#a5f8f56e658301bc39881d41740b3a0010530efd"
 
@@ -197,7 +187,7 @@ blake2b-wasm@^2.4.0:
     blake2b-wasm "^2.4.0"
     nanoassert "^2.0.0"
 
-bn.js@5.2.3, bn.js@^5.2.2:
+bn.js@5.2.3:
   version "5.2.3"
   resolved "https://registry.yarnpkg.com/bn.js/-/bn.js-5.2.3.tgz#16a9e409616b23fef3ccbedb8d42f13bff80295e"
   integrity sha512-EAcmnPkxpntVL+DS7bO1zhcZNvCkxqtkd0ZY53h06GNQ3DEkkGZ/gKgmDv6DdZQGj9BgfSPKtJJ7Dp1GPP8f7w==
@@ -680,7 +670,7 @@ ripemd160@^1.0.0:
   resolved "https://registry.yarnpkg.com/ripemd160/-/ripemd160-1.0.1.tgz#93a4bbd4942bc574b69a8fa57c71de10ecca7d6e"
   integrity sha512-J0YlH2ow/i7d5PJX9RC1XnjmZc7cNNYWe89PIlFszvHeiEtxzA1/VYePkjQ7l1SkUejAcHeDo3IVp2WIzstXXQ==
 
-ripemd160@^2.0.0, ripemd160@^2.0.1, ripemd160@^2.0.2:
+ripemd160@^2.0.0, ripemd160@^2.0.1:
   version "2.0.3"
   resolved "https://registry.yarnpkg.com/ripemd160/-/ripemd160-2.0.3.tgz#9be54e4ba5e3559c8eee06a25cd7648bbccdf5a8"
   integrity sha512-5Di9UC0+8h1L6ZD2d7awM7E/T4uA1fJRlx6zk/NvdCCVEoAnFqvHmCuNeIKoCeIixBX/q8uM+6ycDvF8woqosA==
