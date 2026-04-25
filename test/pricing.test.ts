@@ -8,15 +8,15 @@ const { PLATFORM_FEE, CATEGORY_MARKUPS, LLM_COSTS } = require('../dist/pricing/t
 
 describe('Pricing Calculator', () => {
   it('estimateJobCost returns correct cost for known model+category', () => {
-    // gpt-4o: input 0.0025/1k, output 0.01/1k
-    const cost = estimateJobCost('gpt-4o', 2000, 1000);
-    // (2000/1000)*0.0025 + (1000/1000)*0.01 = 0.005 + 0.01 = 0.015
-    assert.strictEqual(cost, 0.015);
+    // gpt-4.1: input 0.002/1k, output 0.008/1k
+    const cost = estimateJobCost('gpt-4.1', 2000, 1000);
+    // (2000/1000)*0.002 + (1000/1000)*0.008 = 0.004 + 0.008 = 0.012
+    assert.strictEqual(cost, 0.012);
   });
 
   it('recommendPrice: min < recommended < premium < ceiling', () => {
     const rec = recommendPrice({
-      model: 'gpt-4o',
+      model: 'gpt-4.1',
       inputTokens: 2000,
       outputTokens: 1000,
       category: 'medium',
@@ -50,7 +50,7 @@ describe('Pricing Calculator', () => {
     const categories = ['trivial', 'simple', 'medium', 'complex', 'premium'];
     for (const category of categories) {
       const rec = recommendPrice({
-        model: 'gpt-4o',
+        model: 'gpt-4.1',
         inputTokens: 2000,
         outputTokens: 1000,
         category,

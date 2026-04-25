@@ -37,7 +37,7 @@ describe('J41Agent', () => {
     const kp = generateKeypair('verustest');
     const agent = new J41Agent({ apiUrl: 'https://api.example.com', wif: kp.wif });
 
-    const rec = agent.estimatePrice('gpt-4o', 'medium', 2000, 1000);
+    const rec = agent.estimatePrice('gpt-4.1', 'medium', 2000, 1000);
     assert.ok(rec.rawCost > 0, 'rawCost should be positive');
     assert.ok(rec.minimum, 'minimum should exist');
     assert.ok(rec.recommended, 'recommended should exist');

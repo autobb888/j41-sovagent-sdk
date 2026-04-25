@@ -28,14 +28,15 @@ describe('VDXF Schema', () => {
     assert.strictEqual(Object.keys(PARENT_KEYS).length, 8);
   });
 
-  it('agent has 15 keys (flat — no more owner/network/profile blobs)', () => {
+  it('agent has 16 keys (flat — no more owner/network/profile blobs)', () => {
     const keys = Object.keys(VDXF_KEYS.agent);
-    assert.strictEqual(keys.length, 15);
+    assert.strictEqual(keys.length, 16);
     for (const k of [
       'displayName', 'type', 'description', 'status', 'payAddress',
       'services', 'models', 'markup',
       'networkCapabilities', 'networkEndpoints', 'networkProtocols',
       'profileTags', 'profileWebsite', 'profileAvatar', 'profileCategory',
+      'disputePolicy',
     ]) {
       assert.ok(VDXF_KEYS.agent[k], `agent.${k} must be defined`);
     }
@@ -47,10 +48,9 @@ describe('VDXF Schema', () => {
     }
   });
 
-  it('service has 2 keys (schema, dispute)', () => {
-    assert.strictEqual(Object.keys(VDXF_KEYS.service).length, 2);
+  it('service has 1 key (schema only — dispute moved to agent.disputePolicy)', () => {
+    assert.strictEqual(Object.keys(VDXF_KEYS.service).length, 1);
     assert.ok(VDXF_KEYS.service.schema);
-    assert.ok(VDXF_KEYS.service.dispute);
   });
 
   it('review has 1 key (record)', () => {
