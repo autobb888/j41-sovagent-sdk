@@ -8,6 +8,7 @@ import {
   CanonicalError,
   CANONICAL_MAX_BYTES,
   ACTION_MAX_WINDOW_MS,
+  verifyCanonicalSignatures,
   EnvelopeV1,
 } from '../src/crypto/canonical.js';
 
@@ -227,4 +228,94 @@ test('buildRequestAccessEnvelope caps ttl at 300s', () => {
   });
   const window = Date.parse(env.expiresAt) - Date.parse(env.issuedAt);
   assert.equal(window, 300_000);
+});
+
+// ── verifyCanonicalSignatures ──
+
+test('verifyCanonicalSignatures: valid sig against resolved primary R-address', async () => {
+  const fs = require('fs') as typeof import('fs');
+  const os = require('os') as typeof import('os');
+  const path = require('path') as typeof import('path');
+  const keys = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.j41/dispatcher/agents/agent-2/keys.json'), 'utf8'));
+
+  const env = buildRequestAccessEnvelope({
+    buyerIAddress: keys.iAddress,
+    sellerIAddress: 'i6od3pyPABCDEFGHJKLMNPQRSTUVWXYZ12',
+    ephemeralPubKey: '02' + 'a'.repeat(64),
+  });
+  const signed = signCanonical(keys.wif, env, 'verustest');
+  const client = {
+    async getIdentityKeys(idOrName: string) {
+      assert.equal(idOrName, keys.iAddress);
+      return { primaryAddresses: [keys.address], minimumSignatures: 1 };
+    },
+  };
+  const ok = await verifyCanonicalSignatures(signed.envelope, signed.signatures, client, 'verustest');
+  assert.equal(ok, true);
+});
+
+test('verifyCanonicalSignatures: rejects when resolver returns wrong R-address', async () => {
+  const fs = require('fs') as typeof import('fs');
+  const os = require('os') as typeof import('os');
+  const path = require('path') as typeof import('path');
+  const keys = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.j41/dispatcher/agents/agent-2/keys.json'), 'utf8'));
+
+  const env = buildRequestAccessEnvelope({
+    buyerIAddress: keys.iAddress,
+    sellerIAddress: 'i6od3pyPABCDEFGHJKLMNPQRSTUVWXYZ12',
+    ephemeralPubKey: '02' + 'a'.repeat(64),
+  });
+  const signed = signCanonical(keys.wif, env, 'verustest');
+  const client = {
+    async getIdentityKeys() {
+      // Different primary — sig won't validate against this address.
+      return { primaryAddresses: ['RUnrelatedAddressMock123456789012345'], minimumSignatures: 1 };
+    },
+  };
+  const ok = await verifyCanonicalSignatures(signed.envelope, signed.signatures, client, 'verustest');
+  assert.equal(ok, false);
+});
+
+test('verifyCanonicalSignatures: enforces minimumSignatures threshold', async () => {
+  const fs = require('fs') as typeof import('fs');
+  const os = require('os') as typeof import('os');
+  const path = require('path') as typeof import('path');
+  const keys = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.j41/dispatcher/agents/agent-2/keys.json'), 'utf8'));
+
+  const env = buildRequestAccessEnvelope({
+    buyerIAddress: keys.iAddress,
+    sellerIAddress: 'i6od3pyPABCDEFGHJKLMNPQRSTUVWXYZ12',
+    ephemeralPubKey: '02' + 'a'.repeat(64),
+  });
+  const signed = signCanonical(keys.wif, env, 'verustest');
+  // Resolver claims 2-of-N multisig but we only supplied one valid sig — fail.
+  const client = {
+    async getIdentityKeys() {
+      return { primaryAddresses: [keys.address, 'RUnrelatedAddressMock123456789012345'], minimumSignatures: 2 };
+    },
+  };
+  const ok = await verifyCanonicalSignatures(signed.envelope, signed.signatures, client, 'verustest');
+  assert.equal(ok, false, 'must fail when matched sigs < minimumSignatures');
+});
+
+test('verifyCanonicalSignatures: empty signatures array fails', async () => {
+  const env = buildRequestAccessEnvelope({
+    buyerIAddress: 'iAj47bLxABCDEFGHJKLMNPQRSTUVWXYZ12',
+    sellerIAddress: 'i6od3pyPABCDEFGHJKLMNPQRSTUVWXYZ12',
+    ephemeralPubKey: '02' + 'a'.repeat(64),
+  });
+  const client = { async getIdentityKeys() { return { primaryAddresses: ['RAnything'], minimumSignatures: 1 }; } };
+  const ok = await verifyCanonicalSignatures(env, [], client, 'verustest');
+  assert.equal(ok, false);
+});
+
+test('verifyCanonicalSignatures: resolver throw → fail-closed', async () => {
+  const env = buildRequestAccessEnvelope({
+    buyerIAddress: 'iAj47bLxABCDEFGHJKLMNPQRSTUVWXYZ12',
+    sellerIAddress: 'i6od3pyPABCDEFGHJKLMNPQRSTUVWXYZ12',
+    ephemeralPubKey: '02' + 'a'.repeat(64),
+  });
+  const client = { async getIdentityKeys(): Promise<never> { throw new Error('backend down'); } };
+  const ok = await verifyCanonicalSignatures(env, ['Hany'], client, 'verustest');
+  assert.equal(ok, false);
 });

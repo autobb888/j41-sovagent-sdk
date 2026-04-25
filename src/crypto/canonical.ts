@@ -342,28 +342,37 @@ export function recordV1FormatEmission(action: string): void {
 // ── Signature verification (dispatcher mirror verifier) ──
 
 /**
- * Verify the signatures on a v2 canonical envelope.
+ * Verify the signatures on a v2 canonical envelope using the public J41 keys-resolver
+ * endpoint (`GET /v1/identity/:idOrName/keys`).
  *
- * Approach mirrors verifyAccessRequest() in envelope.ts: resolve the buyer i-address to
- * its primary R-address(es) via client.getAgent(), then bitcoinjs-message.verify each
- * signature against the canonical bytes.
+ * Steps:
+ *   1. Canonicalize the envelope to bytes (idempotent JCS).
+ *   2. Resolve `envelope.buyer.iaddress` via `client.getIdentityKeys()` → primary
+ *      R-addresses + minimumSignatures threshold.
+ *   3. For each address, find at most one signature from `signatures` that validates
+ *      against it via bitcoinjs-message. Count distinct addresses that validated.
+ *   4. Pass iff that count is ≥ minimumSignatures.
  *
- * Returns true if at least one signature validates against any primary address.
- * Backend-side multisig threshold (minimumsignatures) is enforced upstream; the dispatcher
- * only needs to confirm the envelope is authentic.
+ * No fallthrough: if the keys endpoint is unreachable, the resolved address list is
+ * empty, or fewer signatures validate than the threshold requires, returns false.
  *
- * Structural validation (size, fields, windows) is NOT done here — call validateEnvelope()
- * first. This function assumes the envelope is already well-formed.
+ * Structural validation (size, fields, windows) is NOT done here — call
+ * validateEnvelope() first. This function assumes the envelope is well-formed.
  *
  * @param envelope - validated canonical envelope
- * @param signatures - array of base64 signatures over canonicalBytes(envelope)
- * @param client - must expose getAgent(iaddress) that returns { primaryAddresses | primaryaddresses | address }
+ * @param signatures - base64 signatures over canonicalBytes(envelope)
+ * @param client - must expose getIdentityKeys(idOrName) returning { primaryAddresses, minimumSignatures }
  * @param network - 'verus' or 'verustest'
  */
 export async function verifyCanonicalSignatures(
   envelope: EnvelopeV1,
   signatures: string[],
-  client: { getAgent(iaddress: string): Promise<{ primaryAddresses?: string[]; primaryaddresses?: string[]; address?: string; data?: unknown }> },
+  client: {
+    getIdentityKeys(idOrName: string): Promise<{
+      primaryAddresses: string[];
+      minimumSignatures: number;
+    }>;
+  },
   network: 'verus' | 'verustest' = 'verustest',
 ): Promise<boolean> {
   if (!Array.isArray(signatures) || signatures.length === 0) return false;
@@ -376,37 +385,33 @@ export async function verifyCanonicalSignatures(
 
   const canonical = canonicalBytes(envelope).toString('utf8');
 
-  // Resolve i-address → R-address(es). Accept both shapes for compatibility with mocked clients.
-  let candidates: string[] = [];
+  let resolved: { primaryAddresses: string[]; minimumSignatures: number };
   try {
-    const agent = (await client.getAgent(envelope.buyer.iaddress)) as {
-      primaryAddresses?: string[];
-      primaryaddresses?: string[];
-      address?: string;
-      data?: { primaryAddresses?: string[]; primaryaddresses?: string[]; address?: string };
-    };
-    const unwrap = (agent.data ?? agent) as typeof agent;
-    candidates = [
-      ...(unwrap.primaryAddresses ?? []),
-      ...(unwrap.primaryaddresses ?? []),
-      ...(unwrap.address ? [unwrap.address] : []),
-    ];
+    resolved = await client.getIdentityKeys(envelope.buyer.iaddress);
   } catch {
-    // Resolution failed — fall through to empty candidate list, verification fails.
+    return false;
   }
 
-  if (candidates.length === 0) return false;
+  const { primaryAddresses, minimumSignatures } = resolved;
+  if (!Array.isArray(primaryAddresses) || primaryAddresses.length === 0) return false;
+  const threshold = Number.isFinite(minimumSignatures) && minimumSignatures > 0 ? minimumSignatures : 1;
 
-  for (const sig of signatures) {
-    for (const addr of candidates) {
+  // Each primary address can satisfy at most one signature. For multisig we need at
+  // least `threshold` distinct addresses to validate.
+  const matchedAddresses = new Set<string>();
+  for (const addr of primaryAddresses) {
+    for (const sig of signatures) {
       try {
         if (bitcoinMessage.verify(canonical, addr, sig, net.messagePrefix)) {
-          return true;
+          matchedAddresses.add(addr);
+          break;
         }
       } catch {
-        // try next combination
+        // Try next signature.
       }
     }
+    if (matchedAddresses.size >= threshold) return true;
   }
-  return false;
+
+  return matchedAddresses.size >= threshold;
 }

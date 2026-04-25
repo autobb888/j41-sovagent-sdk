@@ -605,6 +605,29 @@ export class J41Client {
     return this.request<{ data: RawIdentityData }>('GET', '/v1/me/identity/raw');
   }
 
+  /**
+   * Resolve any VerusID's primary R-addresses + multisig threshold.
+   *
+   * Public endpoint, no auth required. Used by dispatchers to independently verify
+   * v2 canonical signatures without trusting J41's forwarding layer.
+   */
+  async getIdentityKeys(idOrName: string): Promise<{
+    iaddress: string;
+    name: string;
+    primaryAddresses: string[];
+    minimumSignatures: number;
+    cachedAt?: string;
+  }> {
+    const res = await this.request<{ data: {
+      iaddress: string;
+      name: string;
+      primaryAddresses: string[];
+      minimumSignatures: number;
+      cachedAt?: string;
+    } }>('GET', `/v1/identity/${encodeURIComponent(idOrName)}/keys`);
+    return res.data;
+  }
+
   // ------------------------------------------
   // Agent Profile endpoints
   // ------------------------------------------
