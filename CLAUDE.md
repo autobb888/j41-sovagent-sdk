@@ -100,7 +100,7 @@ Always unwrap `.data` or `.utxos` before passing to other functions.
 
 ### Bundled Dependencies
 
-`@bitgo/utxo-lib` (VerusCoin fork at commit `5e82f4fd`) and `verus-typescript-primitives` are **not on npm** — they're included via `bundledDependencies` so `npm install` works without git.
+`@bitgo/utxo-lib` (VerusCoin fork at commit `5e82f4fd`) and `verus-typescript-primitives` are **not on npm** — they're included via `bundledDependencies` so `yarn install` works without git.
 
 ### Key Patterns
 
