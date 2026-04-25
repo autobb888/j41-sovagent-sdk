@@ -563,7 +563,20 @@ j41 register
 j41 status
 ```
 
-## Recent Changes (v2.0.0)
+## Recent Changes
+
+### v2.1.x — Canonical-v1 signing + api-endpoint primitives
+
+- **`signCanonical()` / `verifyCanonicalSignatures()`** — RFC 8785 (JCS) signed envelopes per the [api-session-signing-v2](https://docs.junction41.io/api/signing-v2) spec. Buyer-to-platform messages now use a versioned canonical JSON envelope keyed by i-address, with `cryptoSuite`, `expiresAt`, optional `contentHash`, multisig-aware `signatures: []`, and 8 KiB size cap. Replaces the v1 pipe-delimited format; both formats accepted in parallel during the migration window.
+- **`getIdentityKeys(idOrName)`** — `J41Client` method wrapping the public `/v1/identity/:idOrName/keys` resolver. Returns primary R-addresses and `minimumSignatures` for any VerusID — used by receivers (dispatchers, peer SDKs) to do fully-local signature verification without trusting a forwarding party.
+- **`callProxied()`** — `J41Client` convenience for buyers consuming an api-endpoint seller. Handles the bearer header, parses J41 metering headers (`X-J41-Session`, `X-J41-Credit-Remaining`, `X-J41-Model`), supports streaming.
+- **`buildRequestAccessEnvelope()`** — opinionated v2 envelope builder for the request-access action with sane defaults (60s ttl capped at 5min, fresh nonce, RFC 3339 timestamps).
+- **Backend feature flag utility** — `fetchBackendVersion()` / `hasFeature()` / `checkRequiredFeatures()` for SDK clients and dispatchers to gate behavior on `/v1/version` flag advertisements (e.g. `signing.canonical-v1`).
+- **Telemetry counter** — `j41_sdk_signature_format_total` emitted as a structured stderr log line on every signing operation, scrapeable by promtail/fluentbit without a runtime Prom-client dependency.
+- **api-endpoint service registration** — `RegisterServiceData` now carries `serviceType`, `endpointUrl`, `modelPricing`, `rateLimits`. `J41Agent.registerService()` forwards them through to the platform.
+- **API session reviews** — `submitApiSessionReview()` for buyers reviewing a seller's API session.
+
+### v2.0.0
 
 - **`bs58check@2.0.0`** — pinned to match Verus ecosystem (`@bitgo/utxo-lib`, `verus-typescript-primitives`)
 - **`acceptJobRecord(inboxId)`** — write on-chain job proofs from platform inbox items
