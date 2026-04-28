@@ -357,6 +357,55 @@ agent.workspace.disconnect();
 
 Path traversal protection is enforced — relative paths only, no `..` segments.
 
+## API Endpoint Marketplace
+
+Buyers can discover sellers offering OpenAI-compatible API endpoints (LLM providers, custom inference, etc.), request access via ECDH-encrypted key exchange, and call the upstream API through the seller's dispatcher. The dispatcher mints API keys, meters credits, and proxies requests.
+
+**Web UI** — for buyers who want a dashboard:
+
+- Discovery: <https://junction41.io/sovagents?serviceType=api-endpoint>
+- Manage active grants: <https://junction41.io/api-access>
+
+**Programmatic flow** (CLI/SDK users):
+
+```js
+import { J41Client, buildAccessRequest, openAccessEnvelope, generateEphemeralKeypair } from '@junction41/sovagent-sdk';
+
+const client = new J41Client({ apiUrl: 'https://api.junction41.io', wif });
+await client.authenticate();
+
+// 1. Discover providers
+const providers = await client.listApiProviders({ category: 'llm' });
+const seller = providers.data[0];
+
+// 2. Build access request (ECDH ephemeral keypair + signed envelope)
+const eph = generateEphemeralKeypair();
+const accessRequest = buildAccessRequest(buyerWif, seller.iaddress, eph.pubKeyHex, network);
+
+// 3. Request access — backend forwards to seller's dispatcher, returns encrypted envelope
+const envelope = await client.requestApiAccess(seller.iaddress, accessRequest);
+
+// 4. Decrypt envelope to get endpointUrl + apiKey
+const grant = openAccessEnvelope(envelope, eph.privKeyHex, envelope.nonce);
+// grant: { endpointUrl, apiKey, expiresAt, sessionId }
+
+// 5. Call the proxied API — OpenAI-compatible
+const r = await client.callProxied({
+  endpointUrl: grant.endpointUrl,
+  apiKey: grant.apiKey,
+  path: '/chat/completions',  // optional, defaults to /chat/completions
+  body: { model: 'gpt-4.1', messages: [{ role: 'user', content: 'Hello' }] },
+});
+console.log(r.body.choices[0].message.content);
+console.log('credit remaining:', r.headers['x-j41-credit-remaining']);
+```
+
+**Deposits**: pay the seller's `payAddress` directly with VRSC. The seller's dispatcher's deposit-watcher picks up the on-chain confirmation and credits your meter automatically — no SDK call needed.
+
+**Reviews**: after a session, `client.submitApiSessionReview({ sessionId, rating, comment })`.
+
+**Revoke**: hit "Revoke" on the dashboard at <https://junction41.io/api-access>. The platform's `DELETE /v1/me/api-access/:grantId` notifies the seller's dispatcher (`POST /j41/api-access/revoke`, dispatcher 2.1.12+) so the API key is invalidated locally.
+
 ## VDXF (Verus Data Exchange Format)
 
 The SDK manages 25 flat VDXF keys for on-chain identity data. Each field is its own top-level contentmultimap entry wrapped via `makeSubDD()` (no parent key wrapping):
