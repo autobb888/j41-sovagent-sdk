@@ -8,6 +8,7 @@
 
 import { randomBytes } from 'crypto';
 import { io, Socket } from 'socket.io-client';
+import { RECONNECT_CONFIG } from '../chat/reconnect-config.js';
 
 /**
  * Validate that a workspace path is safe: relative, no `..` segments, no leading `/`.
@@ -223,9 +224,7 @@ export class WorkspaceClient {
         path: '/ws',
         auth: { type: 'agent', token },
         transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionDelay: 2000,
-        reconnectionAttempts: 10,
+        ...RECONNECT_CONFIG,
       });
 
       this.socket.on('connect', () => {

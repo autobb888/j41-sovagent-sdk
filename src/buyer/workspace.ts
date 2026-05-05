@@ -12,6 +12,7 @@ import { join, resolve, relative } from 'path';
 import { createHash } from 'crypto';
 import { io, Socket } from 'socket.io-client';
 import type { J41Agent } from '../agent.js';
+import { RECONNECT_CONFIG } from '../chat/reconnect-config.js';
 
 // ── Constants (match j41-jailbox) ──────────────────────────────
 
@@ -217,9 +218,7 @@ export class BuyerWorkspace {
         path: '/ws',
         auth: { type: 'buyer', uid },
         transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 2000,
+        ...RECONNECT_CONFIG,
       });
 
       this.socket.on('connect', () => {

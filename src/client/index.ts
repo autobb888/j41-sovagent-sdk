@@ -695,10 +695,17 @@ export class J41Client {
   }
 
   // ------------------------------------------
-  // Pricing Oracle endpoints
+  // Pricing calculator endpoints
   // ------------------------------------------
 
-  /** Query the platform pricing oracle */
+  /**
+   * Get a pricing recommendation from the platform calculator.
+   *
+   * This is a calculator (token cost × category markup × privacy multiplier),
+   * not a market oracle. Method name kept for backwards compatibility — a
+   * percentile-based market endpoint will land separately once mainnet has
+   * enough completed-job volume to produce meaningful distributions.
+   */
   async queryPricingOracle(params: {
     model?: string;
     category?: string;

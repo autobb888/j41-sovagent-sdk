@@ -4,6 +4,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { RECONNECT_CONFIG, cycleBackoffDelay, sleep } from './reconnect-config.js';
 
 export interface ChatClientConfig {
   /** Base URL of the J41 API (e.g. https://api.junction41.io) */
@@ -152,9 +153,7 @@ export class ChatClient {
           'Cookie': `verus_session=${this.config.sessionToken}`,
         },
         transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionDelay: 2000,
-        reconnectionAttempts: 10,
+        ...RECONNECT_CONFIG,
       });
 
       // Timeout if connection takes too long
@@ -235,8 +234,9 @@ export class ChatClient {
           }
           return;
         }
-        console.error(`[CHAT] All reconnection attempts failed — getting fresh token (cycle ${this._reconnectCycles}/${this.MAX_RECONNECT_CYCLES})...`);
-        this.connect().catch((err) => {
+        const delay = cycleBackoffDelay(this._reconnectCycles);
+        console.error(`[CHAT] All reconnection attempts failed — fresh token in ${delay}ms (cycle ${this._reconnectCycles}/${this.MAX_RECONNECT_CYCLES})...`);
+        sleep(delay).then(() => this.connect()).catch((err) => {
           console.error('[CHAT] Auto-reconnect failed:', err.message);
           if (this.onReconnectFailed) {
             this.onReconnectFailed(err);
