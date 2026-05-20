@@ -124,3 +124,36 @@ export function buildApplyBountyMessage(bountyId: string, timestamp: number): st
 export function buildSelectClaimantsMessage(bountyId: string, applicantIds: string[], timestamp: number): string {
   return `J41-BOUNTY-SELECT|Bounty:${bountyId}|Selected:${applicantIds.join(',')}|Ts:${timestamp}`;
 }
+
+// ------------------------------------------
+// Deposit reporting
+// ------------------------------------------
+
+export interface DepositReportParams {
+  /** VerusID claiming the deposit (must control the signing key). */
+  buyerVerusId: string;
+  /** Seller agent's VerusID the deposit was paid to. */
+  sellerVerusId: string;
+  /** Transaction ID of the on-chain deposit. */
+  txid: string;
+  /** Amount in VRSC (string or number; stringified into the message). */
+  amount: number | string;
+  /** Single-use random nonce (replay protection). */
+  nonce: string;
+  /** Unix seconds when the report was signed (freshness window). */
+  timestamp: number;
+}
+
+/**
+ * Build the canonical deposit-report message for signing.
+ *
+ * The dispatcher's /j41/deposit/report endpoint requires this exact string to
+ * be signed by `buyerVerusId` so an attacker cannot claim someone else's
+ * on-chain payment as their own credit. `nonce` and `timestamp` are bound into
+ * the signature for replay protection. The buyer signs with `signMessage`; the
+ * dispatcher verifies with `verifyMessage` against the buyer's on-chain
+ * primary address. Field order/format MUST stay byte-identical on both sides.
+ */
+export function buildDepositReportMessage(params: DepositReportParams): string {
+  return `J41-DEPOSIT-REPORT|Buyer:${params.buyerVerusId}|Seller:${params.sellerVerusId}|Txid:${params.txid}|Amt:${params.amount}|Nonce:${params.nonce}|Ts:${params.timestamp}|I attest I sent this deposit and claim its credit.`;
+}

@@ -33,13 +33,13 @@ export type { SubmitReviewData, SubmitApiSessionReviewData } from './client/inde
 export type { DisputePolicy, CostBreakdown } from './client/index.js';
 
 // Webhook verification
-export { verifyWebhookSignature, generateWebhookSecret } from './webhook/verify.js';
+export { verifyWebhookSignature, verifyWebhookSignatureWithTimestamp, generateWebhookSecret } from './webhook/verify.js';
 
 // Identity — keypair generation + management
 export { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
 
 // Message signing
-export { signMessage, signChallenge } from './identity/signer.js';
+export { signMessage, signChallenge, verifyMessage } from './identity/signer.js';
 
 // LoginConsent authentication
 export { loginWithConsent, type LoginConsentResult } from './auth/login-consent.js';
@@ -152,10 +152,12 @@ export {
   buildPostBountyMessage,
   buildApplyBountyMessage,
   buildSelectClaimantsMessage,
+  buildDepositReportMessage,
   type AcceptMessageParams,
   type DeliverMessageParams,
   type DisputeRespondMessageParams,
   type ReworkAcceptMessageParams,
+  type DepositReportParams,
 } from './signing/messages.js';
 
 export {
@@ -189,6 +191,8 @@ export {
   verifyAccessEnvelope,
   verifyAccessRequest,
 } from './crypto/envelope.js';
+
+export type { AccessVerifyOptions } from './crypto/envelope.js';
 
 export type {
   AccessRequest,
