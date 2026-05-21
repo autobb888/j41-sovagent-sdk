@@ -378,10 +378,7 @@ export async function verifyCanonicalSignatures(
   if (!Array.isArray(signatures) || signatures.length === 0) return false;
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const bitcoinMessage = require('bitcoinjs-message');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const utxolib = require('@bitgo/utxo-lib');
-  const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
+  const { verifyVerusMessage } = require('../identity/verus-message.js');
 
   const canonical = canonicalBytes(envelope).toString('utf8');
 
@@ -402,7 +399,7 @@ export async function verifyCanonicalSignatures(
   for (const addr of primaryAddresses) {
     for (const sig of signatures) {
       try {
-        if (bitcoinMessage.verify(canonical, addr, sig, net.messagePrefix)) {
+        if (verifyVerusMessage(canonical, addr, sig)) {
           matchedAddresses.add(addr);
           break;
         }

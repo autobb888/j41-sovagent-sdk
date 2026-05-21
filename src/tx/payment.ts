@@ -114,7 +114,9 @@ export function selectUtxos(
  *
  * @returns Signed raw transaction hex ready for broadcast
  */
-export function buildPayment(params: PaymentParams): string {
+export function buildPayment(params: PaymentParams): string;
+export function buildPayment(params: PaymentParams & { returnDetails: true }): MultiPaymentResult;
+export function buildPayment(params: PaymentParams & { returnDetails?: boolean }): string | MultiPaymentResult {
   const {
     wif,
     toAddress,
@@ -124,11 +126,18 @@ export function buildPayment(params: PaymentParams): string {
     network = 'verustest',
   } = params;
 
+  // Validate amount — reject negative/NaN/Infinity/oversized before constructing.
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`Invalid payment amount: ${amount}`);
+  }
   const networkObj = network === 'verustest'
     ? utxolib.networks.verustest
     : utxolib.networks.verus;
 
   const amountSatoshis = Math.round(amount * SATS_PER_COIN);
+  if (!Number.isSafeInteger(amountSatoshis)) {
+    throw new Error('Payment amount too large');
+  }
   const totalNeeded = amountSatoshis + fee;
   const { selected, total: inputTotal } = selectUtxos(utxos, totalNeeded / SATS_PER_COIN);
 
@@ -154,8 +163,9 @@ export function buildPayment(params: PaymentParams): string {
   // Payment output — supports both R-address and i-address destinations
   txb.addOutput(toOutputScript(toAddress, networkObj), amountSatoshis);
 
-  // Change output
-  if (changeSatoshis > 1000) {
+  // Change output (vout 1, after the single payment output)
+  const hasChange = changeSatoshis > 1000;
+  if (hasChange) {
     txb.addOutput(toOutputScript(changeAddress, networkObj), changeSatoshis);
   }
 
@@ -164,7 +174,22 @@ export function buildPayment(params: PaymentParams): string {
     txb.sign(i, keyPair, undefined, utxolib.Transaction.SIGHASH_ALL, selected[i].satoshis);
   }
 
-  return txb.build().toHex();
+  const tx = txb.build();
+  const rawhex = tx.toHex();
+  if (!params.returnDetails) return rawhex;
+
+  const txid = tx.getId();
+  return {
+    rawhex,
+    spentUtxos: selected.map(u => ({ txid: u.txid, vout: u.vout })),
+    changeUtxo: hasChange ? {
+      txid,
+      vout: 1,
+      satoshis: changeSatoshis,
+      script: toOutputScript(changeAddress, networkObj).toString('hex'),
+      address: changeAddress,
+    } as Utxo : null,
+  };
 }
 
 // --- Multi-output payment (dual TX for agent + platform fee) ---
@@ -209,6 +234,11 @@ export function buildMultiPayment(params: MultiPaymentParams & { returnDetails?:
   } = params;
 
   if (outputs.length === 0) throw new Error('At least one output required');
+  for (const o of outputs) {
+    if (!Number.isFinite(o.amount) || o.amount <= 0) {
+      throw new Error(`Invalid output amount: ${o.amount}`);
+    }
+  }
 
   const networkObj = network === 'verustest'
     ? utxolib.networks.verustest

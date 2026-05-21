@@ -18,7 +18,7 @@ import { EventEmitter } from 'node:events';
 import { J41Client } from './client/index.js';
 import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
 import { signMessage } from './identity/signer.js';
-import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage } from './signing/messages.js';
+import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage, assertNotProtocolMessage } from './signing/messages.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import type { Job, RegisterServiceData } from './client/index.js';
@@ -197,6 +197,9 @@ export class J41Agent extends EventEmitter {
       }
     }
 
+    // Domain guard: never let a (MITM-able) server challenge be a J41-protocol
+    // message we'd sign with our identity key — that would be a signing oracle.
+    assertNotProtocolMessage(challengeRes.challenge);
     const signature = signMessage(this.wif, challengeRes.challenge, this.networkType);
 
     const controller = new AbortController();
@@ -298,6 +301,7 @@ export class J41Agent extends EventEmitter {
     // (the local verification expects this format, not legacy signMessage)
     // Onboarding challenge uses R-address message verification path on server.
     // Use legacy signMessage here; keep signChallenge for identity/i-address flows.
+    assertNotProtocolMessage(challenge);
     const signature = signMessage(this.wif!, challenge, network);
     console.log(`[J41] Challenge signed. Submitting registration...`);
 
@@ -1830,6 +1834,8 @@ export class J41Agent extends EventEmitter {
     sourceAddress?: string;
   }): Promise<string> {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
+    const wif = this.wif;
+    return this.serializeSend(async () => {
     await this.login();
 
     // Resolve VerusID to i-address if needed
@@ -1843,16 +1849,15 @@ export class J41Agent extends EventEmitter {
       }
     }
 
-    // Get UTXOs
+    // Get UTXOs — merge confirmed + our unconfirmed change, exclude already-spent, dedupe.
     const utxoResp = await this._client.getUtxos();
-    let utxos = utxoResp.utxos || utxoResp;
-
-    if (!utxos || !Array.isArray(utxos) || utxos.length === 0) {
+    let apiUtxos = (utxoResp.utxos || utxoResp) as any[];
+    if (!Array.isArray(apiUtxos)) apiUtxos = [];
+    apiUtxos = apiUtxos.filter((u: any) => u.satoshis > 0);
+    let utxos = this.mergeUtxos(apiUtxos);
+    if (utxos.length === 0) {
       throw new Error('No UTXOs available — wallet is empty');
     }
-
-    // Filter to value-carrying UTXOs only (skip identity update UTXOs with 0 satoshis)
-    utxos = utxos.filter((u: any) => u.satoshis > 0);
 
     // If sourceAddress specified, only use UTXOs from that address
     if (opts?.sourceAddress) {
@@ -1873,25 +1878,41 @@ export class J41Agent extends EventEmitter {
       if (allFromI && this.iAddress) {
         changeAddress = this.iAddress;
       } else {
-        changeAddress = wifToAddress(this.wif, this.networkType);
+        changeAddress = wifToAddress(wif, this.networkType);
       }
     }
 
-    const rawhex = buildPayment({
-      wif: this.wif,
+    // SECURITY: change MUST return to one of the agent's own addresses. A
+    // caller-supplied changeAddress pointing elsewhere would divert wallet
+    // change — frequently the bulk of the balance — to a third party. This
+    // protects every caller (MCP tools and SDK-direct) at the construction point.
+    const ownRAddress = wifToAddress(wif, this.networkType);
+    const selfAddrs = new Set([ownRAddress, this.iAddress].filter(Boolean) as string[]);
+    if (!selfAddrs.has(changeAddress)) {
+      throw new Error(`Refusing to send change to a non-self address (${changeAddress}); change must go to the agent's own R-address or i-address.`);
+    }
+
+    const built = buildPayment({
+      wif,
       toAddress,
       amount,
       utxos,
       changeAddress,
       network: this.networkType,
+      returnDetails: true,
     });
 
-    // Broadcast
-    const result = await this._client.broadcast(rawhex);
+    // Mark inputs spent BEFORE broadcast so a following send can't reselect them.
+    for (const spent of built.spentUtxos) this._spentUtxos.add(`${spent.txid}:${spent.vout}`);
+
+    const result = await this._client.broadcast(built.rawhex);
     const txid = typeof result === 'string' ? result : result.txid || JSON.stringify(result);
+    // Chain the change UTXO for the next send (uses the real broadcast txid).
+    if (built.changeUtxo) { built.changeUtxo.txid = txid; this._pendingChange.push(built.changeUtxo); }
 
     this.emit('payment:sent', { txid, to: toAddress, amount });
     return txid;
+    });
   }
 
   /**
@@ -1901,9 +1922,46 @@ export class J41Agent extends EventEmitter {
   // Track spent UTXOs and unconfirmed change for UTXO chaining (multiple TXs per block)
   private _spentUtxos: Set<string> = new Set(); // "txid:vout" keys
   private _pendingChange: any[] = []; // unconfirmed change UTXOs from our own TXs
+  private _txChain: Promise<unknown> = Promise.resolve(); // serializes sends
+
+  /**
+   * Serialize fund-moving operations so two concurrent sends can't select the
+   * same UTXO (double-spend → one tx rejected / payment silently fails).
+   */
+  private serializeSend<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this._txChain.then(fn, fn);
+    this._txChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  /**
+   * Merge confirmed API UTXOs with our unconfirmed change, excluding
+   * already-spent outpoints and de-duplicating by txid:vout. A change UTXO that
+   * has since confirmed appears in BOTH lists — selecting it twice would build
+   * an invalid (duplicate-input) tx. Also prunes pending-change entries that are
+   * now spent or confirmed so the list can't grow unbounded.
+   */
+  private mergeUtxos(apiUtxos: any[]): any[] {
+    const apiKeys = new Set(apiUtxos.map((u: any) => `${u.txid}:${u.vout}`));
+    this._pendingChange = this._pendingChange.filter((u: any) => {
+      const k = `${u.txid}:${u.vout}`;
+      return !this._spentUtxos.has(k) && !apiKeys.has(k);
+    });
+    const seen = new Set<string>();
+    const merged: any[] = [];
+    for (const u of [...apiUtxos, ...this._pendingChange]) {
+      const k = `${u.txid}:${u.vout}`;
+      if (this._spentUtxos.has(k) || seen.has(k)) continue;
+      seen.add(k);
+      merged.push(u);
+    }
+    return merged;
+  }
 
   async sendMultiPayment(outputs: Array<{ address: string; amount: number }>): Promise<string> {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
+    const wif = this.wif;
+    return this.serializeSend(async () => {
     await this.login();
 
     const utxoResp = await this._client.getUtxos();
@@ -1911,21 +1969,18 @@ export class J41Agent extends EventEmitter {
     if (!Array.isArray(apiUtxos)) apiUtxos = [];
     apiUtxos = apiUtxos.filter((u: any) => u.satoshis > 0);
 
-    // Merge API UTXOs + pending change, excluding already-spent ones
-    const allUtxos = [
-      ...apiUtxos.filter((u: any) => !this._spentUtxos.has(`${u.txid}:${u.vout}`)),
-      ...this._pendingChange.filter((u: any) => !this._spentUtxos.has(`${u.txid}:${u.vout}`)),
-    ];
+    // Merge confirmed + unconfirmed change, exclude spent, dedupe by txid:vout.
+    const allUtxos = this.mergeUtxos(apiUtxos);
 
     if (allUtxos.length === 0) {
       throw new Error('No UTXOs available — wallet is empty or all outputs are unconfirmed');
     }
 
     const { buildMultiPayment, wifToAddress } = await import('./tx/payment.js');
-    const changeAddress = wifToAddress(this.wif, this.networkType);
+    const changeAddress = wifToAddress(wif, this.networkType);
 
     const result = (buildMultiPayment as any)({
-      wif: this.wif,
+      wif,
       outputs,
       utxos: allUtxos,
       changeAddress,
@@ -1933,13 +1988,13 @@ export class J41Agent extends EventEmitter {
       returnDetails: true,
     });
 
-    const broadcastResult = await this._client.broadcast(result.rawhex);
-    const txid = typeof broadcastResult === 'string' ? broadcastResult : broadcastResult.txid || JSON.stringify(broadcastResult);
-
-    // Track spent UTXOs so they're excluded from future calls
+    // Mark inputs spent BEFORE broadcast so a following send can't reselect them.
     for (const spent of result.spentUtxos) {
       this._spentUtxos.add(`${spent.txid}:${spent.vout}`);
     }
+
+    const broadcastResult = await this._client.broadcast(result.rawhex);
+    const txid = typeof broadcastResult === 'string' ? broadcastResult : broadcastResult.txid || JSON.stringify(broadcastResult);
 
     // Track change output so it can be spent in the next TX (UTXO chaining)
     if (result.changeUtxo) {
@@ -1951,6 +2006,7 @@ export class J41Agent extends EventEmitter {
     const totalAmount = outputs.reduce((s, o) => s + o.amount, 0);
     this.emit('payment:sent', { txid, outputs, totalAmount });
     return txid;
+    });
   }
 
   /**

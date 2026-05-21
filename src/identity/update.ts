@@ -131,8 +131,23 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
 
   // 4. Create key pair from WIF
   const keyPair = utxolib.ECPair.fromWIF(wif, networkObj);
+  try {
   const agentAddress = keyPair.getAddress();
   const agentScript = utxolib.address.toOutputScript(agentAddress, networkObj);
+
+  // SECURITY: refuse to sign unless this key is a primary address of the
+  // identity the (semi-trusted) API returned. Defeats a doctored/MITM'd
+  // getidentity response that substitutes attacker primaryaddresses (which
+  // would otherwise let us sign away control of our own identity), and guards
+  // against accidentally locking ourselves out.
+  const primaryAddrs = identityData.identity.primaryaddresses;
+  if (!Array.isArray(primaryAddrs) || !primaryAddrs.includes(agentAddress)) {
+    throw new Error('Refusing to build identity update: signing key is not a primary address of the returned identity (possible tampered getidentity response).');
+  }
+  const minSigs = identityData.identity.minimumsignatures;
+  if (typeof minSigs === 'number' && (minSigs < 1 || minSigs > primaryAddrs.length)) {
+    throw new Error('Refusing to build identity update: implausible minimumsignatures in the returned identity.');
+  }
 
   // 5. Select UTXOs to cover fee — only use R-address UTXOs (not i-address)
   // i-address UTXOs (e.g. from job payments) have a different script and can't be
@@ -184,4 +199,13 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
   // 8. Build and return signed transaction hex
   const signedTx = txb.build();
   return signedTx.toHex();
+  } finally {
+    // Wipe the private scalar from memory on every exit path (mirror
+    // verus-sign.ts zeroization). Best-effort — underlying libs keep copies.
+    try {
+      const d: any = (keyPair as any).d;
+      if (d && d.words && typeof d.words.fill === 'function') d.words.fill(0);
+      if (d && typeof d.toBuffer === 'function') { const b = d.toBuffer(32); if (b && b.fill) b.fill(0); }
+    } catch { /* best-effort */ }
+  }
 }

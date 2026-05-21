@@ -359,9 +359,33 @@ function tryParseJson(val: unknown): unknown {
 /**
  * Decode services from a JSON array value.
  */
+// ── On-chain value validation ──
+// VDXF/contentmultimap data is published by arbitrary identities and is fully
+// attacker-controllable. Validate every decoded value that flows into a
+// financial or address sink so a malicious publisher cannot inject NaN /
+// negative / Infinity / huge numbers (→ free usage, credit injection, meter
+// corruption) or a bogus payout address.
+const VDXF_MAX_SERVICES = 100;
+const VDXF_MAX_PRICE = 1e9;       // VRSC sanity ceiling
+const VDXF_MAX_NUMBER = 1e12;     // generic non-negative ceiling (limits/windows)
+
+/** A finite number within [min, max], or undefined if the input is unusable. */
+function safeNumber(v: unknown, min: number, max: number): number | undefined {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) return undefined;
+  return n;
+}
+
+/** Validate a Verus R-address or i-address (base58check shape). */
+function isVerusAddress(s: unknown): s is string {
+  return typeof s === 'string' && /^[Ri][1-9A-HJ-NP-Za-km-z]{25,40}$/.test(s);
+}
+
 function decodeServicesArray(raw: unknown): ServiceInput[] {
-  const svcArr: Record<string, unknown>[] = typeof raw === 'string'
+  const parsed: Record<string, unknown>[] = typeof raw === 'string'
     ? JSON.parse(raw) : raw as Record<string, unknown>[];
+  // Cap the array length to bound allocation/CPU from a hostile on-chain blob.
+  const svcArr = Array.isArray(parsed) ? parsed.slice(0, VDXF_MAX_SERVICES) : [];
   const services: ServiceInput[] = [];
 
   for (const svc of svcArr) {
@@ -371,16 +395,15 @@ function decodeServicesArray(raw: unknown): ServiceInput[] {
     let acceptedCurrencies: Array<{ currency: string; price: number }> | undefined;
 
     if (svc.pricing && Array.isArray(svc.pricing)) {
-      const pricingArr = svc.pricing as Array<Record<string, unknown>>;
+      const pricingArr = (svc.pricing as Array<Record<string, unknown>>).slice(0, 50);
       if (pricingArr.length > 0) {
-        price = Number(pricingArr[0].amount ?? pricingArr[0].price);
+        price = safeNumber(pricingArr[0].amount ?? pricingArr[0].price, 0, VDXF_MAX_PRICE);
         currency = pricingArr[0].currency as string;
       }
       if (pricingArr.length > 1) {
-        acceptedCurrencies = pricingArr.slice(1).map(p => ({
-          currency: p.currency as string,
-          price: Number(p.amount ?? p.price),
-        }));
+        acceptedCurrencies = pricingArr.slice(1)
+          .map(p => ({ currency: p.currency as string, price: safeNumber(p.amount ?? p.price, 0, VDXF_MAX_PRICE) }))
+          .filter((e): e is { currency: string; price: number } => e.price !== undefined);
       }
     }
 
@@ -397,7 +420,10 @@ function decodeServicesArray(raw: unknown): ServiceInput[] {
       status: svc.status as string | undefined,
     };
     if (acceptedCurrencies) svcInput.acceptedCurrencies = acceptedCurrencies;
-    if (svc.resolutionWindow != null) svcInput.resolutionWindow = Number(svc.resolutionWindow);
+    if (svc.resolutionWindow != null) {
+      const rw = safeNumber(svc.resolutionWindow, 0, VDXF_MAX_NUMBER);
+      if (rw !== undefined) svcInput.resolutionWindow = rw;
+    }
     if (svc.refundPolicy) {
       svcInput.refundPolicy = typeof svc.refundPolicy === 'string'
         ? JSON.parse(svc.refundPolicy as string)
@@ -448,7 +474,8 @@ function decodeFlatContentMultimap(cmm: Record<string, unknown[]>): {
   const desc = parseFlatEntry(cmm[K.description]);
   if (desc) profile.description = desc as string;
   const payAddr = parseFlatEntry(cmm[K.payAddress]);
-  if (payAddr) profile.payAddress = payAddr as string;
+  // Only accept a well-formed R-/i-address — never a bogus on-chain payout target.
+  if (isVerusAddress(payAddr)) profile.payAddress = payAddr;
 
   // Services
   const svcRaw = parseFlatEntry(cmm[K.services]);
@@ -487,7 +514,10 @@ function decodeFlatContentMultimap(cmm: Record<string, unknown[]>): {
 
   // Markup
   const markup = parseFlatEntry(cmm[K.markup]);
-  if (markup != null) profile.markup = Number(markup);
+  if (markup != null) {
+    const m = safeNumber(markup, 1, 50); // mirror the build-side 1..50 clamp
+    if (m !== undefined) profile.markup = m;
+  }
 
   // Dispute policy
   const disputeRaw = parseFlatEntry(cmm[K.disputePolicy]);
@@ -546,8 +576,8 @@ function decodeLegacyContentMultimap(cmm: Record<string, unknown[]>): {
       if (agentData.displayName) profile.name = agentData.displayName as string;
       if (agentData.type) profile.type = agentData.type as AgentProfileInput['type'];
       if (agentData.description) profile.description = agentData.description as string;
-      // agent.owner mapped to payAddress for migration
-      if (agentData.owner) profile.payAddress = agentData.owner as string;
+      // agent.owner mapped to payAddress for migration (validate the address)
+      if (isVerusAddress(agentData.owner)) profile.payAddress = agentData.owner;
 
       // Decode legacy consolidated network blob
       if (agentData.network) {
@@ -577,7 +607,8 @@ function decodeLegacyContentMultimap(cmm: Record<string, unknown[]>): {
 
       // Markup
       if (agentData.markup != null) {
-        profile.markup = Number(agentData.markup);
+        const m = safeNumber(agentData.markup, 1, 50);
+        if (m !== undefined) profile.markup = m;
       }
     }
   }
@@ -592,12 +623,17 @@ function decodeLegacyContentMultimap(cmm: Record<string, unknown[]>): {
           ? JSON.parse(sessionData.params) : sessionData.params;
         Object.assign(session, params);
       }
-      // Legacy individual session keys fallback
-      if (sessionData.duration != null) session.duration = Number(sessionData.duration);
-      if (sessionData.tokenLimit != null) session.tokenLimit = Number(sessionData.tokenLimit);
-      if (sessionData.imageLimit != null) session.imageLimit = Number(sessionData.imageLimit);
-      if (sessionData.messageLimit != null) session.messageLimit = Number(sessionData.messageLimit);
-      if (sessionData.maxFileSize != null) session.maxFileSize = Number(sessionData.maxFileSize);
+      // Legacy individual session keys fallback (validate numerics)
+      const dur = safeNumber(sessionData.duration, 0, VDXF_MAX_NUMBER);
+      if (dur !== undefined) session.duration = dur;
+      const tl = safeNumber(sessionData.tokenLimit, 0, VDXF_MAX_NUMBER);
+      if (tl !== undefined) session.tokenLimit = tl;
+      const il = safeNumber(sessionData.imageLimit, 0, VDXF_MAX_NUMBER);
+      if (il !== undefined) session.imageLimit = il;
+      const ml = safeNumber(sessionData.messageLimit, 0, VDXF_MAX_NUMBER);
+      if (ml !== undefined) session.messageLimit = ml;
+      const fs = safeNumber(sessionData.maxFileSize, 0, VDXF_MAX_NUMBER);
+      if (fs !== undefined) session.maxFileSize = fs;
       if (sessionData.allowedFileTypes) {
         session.allowedFileTypes = typeof sessionData.allowedFileTypes === 'string'
           ? JSON.parse(sessionData.allowedFileTypes) : sessionData.allowedFileTypes as string[];

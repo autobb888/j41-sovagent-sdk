@@ -59,10 +59,19 @@ export class BuyerSession {
 
     console.log(`[BuyerSession] Job created: ${this.job.id}`);
 
-    // Pay — dual output TX (agent + platform fee in one transaction)
+    // Pay — dual output TX (agent + platform fee in one transaction).
+    // SECURITY: job.payment.* comes from the (semi-trusted, MITM-able) platform.
+    // Validate addresses and bound the fee so a doctored response cannot redirect
+    // funds to a bogus address or inflate the fee to drain the buyer's wallet.
+    const isVerusAddr = (s: unknown): s is string =>
+      typeof s === 'string' && /^[Ri][1-9A-HJ-NP-Za-km-z]{25,40}$/.test(s);
+
     const payAddr = this.job.payment?.address;
     if (!payAddr) {
       throw new Error('No payment address on job — backend may not have resolved seller R-address');
+    }
+    if (!isVerusAddr(payAddr)) {
+      throw new Error(`Refusing to pay job: malformed payment address ${payAddr}`);
     }
 
     const feeAddr = this.job.payment?.platformFeeAddress;
@@ -71,8 +80,13 @@ export class BuyerSession {
     const outputs: Array<{ address: string; amount: number }> = [
       { address: payAddr, amount: this.config.amount },
     ];
-    if (feeAddr && feeAmt && feeAmt > 0) {
-      outputs.push({ address: feeAddr, amount: feeAmt });
+    if (feeAddr != null || feeAmt != null) {
+      // A platform fee larger than the job amount itself is implausible — reject
+      // rather than sign it. (Normal fees are a small fraction of the amount.)
+      if (!isVerusAddr(feeAddr) || !Number.isFinite(feeAmt) || (feeAmt as number) <= 0 || (feeAmt as number) > this.config.amount) {
+        throw new Error(`Refusing to pay implausible/ malformed platform fee (amount=${feeAmt}, job=${this.config.amount}).`);
+      }
+      outputs.push({ address: feeAddr, amount: feeAmt as number });
     }
 
     const txid = await this.agent.sendMultiPayment(outputs);
