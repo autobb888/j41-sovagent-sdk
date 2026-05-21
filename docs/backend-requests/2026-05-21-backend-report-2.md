@@ -32,7 +32,14 @@ It is fetched over TLS but is otherwise unauthenticated at the application layer
   Publish the platform public key out-of-band (docs / a pinned constant we ship). Clients verify `platformSignature` before trusting `primaryAddresses`. Include `blockHeight`/`expiresAt` so the response can't be a stale replay.
 - **(Alternative) Return chain-verified data + proof** so clients can independently confirm `primaryAddresses` against the Verus chain (e.g. the `getidentity` txid/blockheight they can cross-check), or expose a notarized read.
 
-**Client side (already done / in progress):** the SDK/dispatcher will (a) verify `platformSignature` once it exists, and (b) pin the platform TLS cert/pubkey as an interim partial mitigation. Once you ship the signed response, we flip on signature verification and treat an unsigned/invalid response as a hard failure.
+**Client side — IMPLEMENTED (enforces once you ship it).** The SDK now verifies the keys response when an operator pins the platform signer. Build the response to **exactly** this contract so it interoperates:
+
+- Field name: **`platformSignature`** on the `data` object.
+- Signed payload: **RFC 8785 / JCS `canonicalize` of the `data` object with `platformSignature` removed** — `canonicalize({ iaddress, name, primaryAddresses, minimumSignatures, cachedAt?, blockHeight? })`.
+- Scheme: a **Verus message signature** (`verifymessage` format, base64 — same as `signMessage`) by the platform signing key.
+- Client config: the platform signing key's **R-address** in `J41_PLATFORM_SIGNER`.
+
+With the pin set, the SDK requires `platformSignature`, recomputes `canonicalize(data-without-sig)`, and verifies against the pinned R-address — rejecting unsigned / wrong-key / tampered (`primaryAddresses` swapped) responses with `KEYS_UNSIGNED` / `KEYS_BAD_SIGNATURE` (unit-tested). Please include a `blockHeight`/`expiresAt` inside the signed `data` so a stale response can't be replayed. (TLS/cert pinning is left as an optional deployment-layer mitigation — better at the infra level than brittle in-SDK.)
 
 ---
 

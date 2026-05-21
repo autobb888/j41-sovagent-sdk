@@ -8,7 +8,7 @@ import type { SessionInput } from '../onboarding/validation.js';
 import type { DataPolicyInput } from '../onboarding/finalize.js';
 export type { DisputePolicy, CostBreakdown } from '../onboarding/finalize.js';
 import { keypairFromWIF } from '../identity/keypair.js';
-import { signMessage as verusSignMessage } from '../identity/signer.js';
+import { signMessage as verusSignMessage, verifyMessage as verusVerifyMessage } from '../identity/signer.js';
 import { assertNotProtocolMessage } from '../signing/messages.js';
 import type { WorkspaceStatus, WorkspaceTokenResponse } from '../workspace/index.js';
 
@@ -620,6 +620,7 @@ export class J41Client {
     primaryAddresses: string[];
     minimumSignatures: number;
     cachedAt?: string;
+    platformSignature?: string;
   }> {
     const res = await this.request<{ data: {
       iaddress: string;
@@ -627,8 +628,32 @@ export class J41Client {
       primaryAddresses: string[];
       minimumSignatures: number;
       cachedAt?: string;
+      platformSignature?: string;
     } }>('GET', `/v1/identity/${encodeURIComponent(idOrName)}/keys`);
-    return res.data;
+    const data = res.data;
+
+    // SECURITY (trust anchor): this endpoint decides which addresses may sign
+    // for an identity — every signature check depends on it, and it is MITM-able
+    // over the wire. When an operator pins the platform signer
+    // (J41_PLATFORM_SIGNER = the platform's R-address), REQUIRE and verify a
+    // `platformSignature` over the JCS-canonical response, so a tampered
+    // primaryAddresses set can't be trusted. Unset by default → no behaviour
+    // change until the backend ships signed responses (see backend report #2).
+    const pinned = process.env.J41_PLATFORM_SIGNER;
+    if (pinned) {
+      const { platformSignature, ...signed } = data as Record<string, unknown>;
+      if (typeof platformSignature !== 'string' || !platformSignature) {
+        throw new J41Error('Identity-keys response is unsigned but a platform signer is pinned', 'KEYS_UNSIGNED', 502);
+      }
+      // The Verus message prefix is network-independent, so verification does
+      // not depend on the network param. Signed payload = JCS-canonical of the
+      // response data with platformSignature removed.
+      const canonicalize = require('json-canonicalize').canonicalize as (o: unknown) => string;
+      if (!verusVerifyMessage(canonicalize(signed), pinned, platformSignature)) {
+        throw new J41Error('Identity-keys response failed platform-signature verification (possible tampering/MITM)', 'KEYS_BAD_SIGNATURE', 502);
+      }
+    }
+    return data;
   }
 
   // ------------------------------------------
