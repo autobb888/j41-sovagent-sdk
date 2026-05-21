@@ -153,6 +153,7 @@ export {
   buildApplyBountyMessage,
   buildSelectClaimantsMessage,
   buildDepositReportMessage,
+  assertNotProtocolMessage,
   type AcceptMessageParams,
   type DeliverMessageParams,
   type DisputeRespondMessageParams,

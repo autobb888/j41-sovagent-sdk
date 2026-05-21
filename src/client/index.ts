@@ -9,6 +9,7 @@ import type { DataPolicyInput } from '../onboarding/finalize.js';
 export type { DisputePolicy, CostBreakdown } from '../onboarding/finalize.js';
 import { keypairFromWIF } from '../identity/keypair.js';
 import { signMessage as verusSignMessage } from '../identity/signer.js';
+import { assertNotProtocolMessage } from '../signing/messages.js';
 import type { WorkspaceStatus, WorkspaceTokenResponse } from '../workspace/index.js';
 
 export interface J41ClientConfig {
@@ -215,7 +216,8 @@ export class J41Client {
     // Step 1: Get challenge
     const { challengeId, challenge } = await this.getAuthChallenge();
 
-    // Step 2: Sign challenge
+    // Step 2: Sign challenge (domain guard against a MITM'd protocol-message challenge)
+    assertNotProtocolMessage(challenge);
     const signature = verusSignMessage(wif, challenge, network);
 
     // Step 3: Login
@@ -334,6 +336,7 @@ export class J41Client {
     }
     
     // Step 2: Sign challenge with verifymessage-compatible signature
+    assertNotProtocolMessage(challengeRes.challenge);
     const signature = verusSignMessage(wif, challengeRes.challenge, network);
     
     // Step 3: Submit with signature

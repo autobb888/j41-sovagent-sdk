@@ -18,7 +18,7 @@ import { EventEmitter } from 'node:events';
 import { J41Client } from './client/index.js';
 import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
 import { signMessage } from './identity/signer.js';
-import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage } from './signing/messages.js';
+import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage, assertNotProtocolMessage } from './signing/messages.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import type { Job, RegisterServiceData } from './client/index.js';
@@ -197,6 +197,9 @@ export class J41Agent extends EventEmitter {
       }
     }
 
+    // Domain guard: never let a (MITM-able) server challenge be a J41-protocol
+    // message we'd sign with our identity key — that would be a signing oracle.
+    assertNotProtocolMessage(challengeRes.challenge);
     const signature = signMessage(this.wif, challengeRes.challenge, this.networkType);
 
     const controller = new AbortController();
@@ -298,6 +301,7 @@ export class J41Agent extends EventEmitter {
     // (the local verification expects this format, not legacy signMessage)
     // Onboarding challenge uses R-address message verification path on server.
     // Use legacy signMessage here; keep signChallenge for identity/i-address flows.
+    assertNotProtocolMessage(challenge);
     const signature = signMessage(this.wif!, challenge, network);
     console.log(`[J41] Challenge signed. Submitting registration...`);
 
@@ -1875,6 +1879,16 @@ export class J41Agent extends EventEmitter {
       } else {
         changeAddress = wifToAddress(this.wif, this.networkType);
       }
+    }
+
+    // SECURITY: change MUST return to one of the agent's own addresses. A
+    // caller-supplied changeAddress pointing elsewhere would divert wallet
+    // change — frequently the bulk of the balance — to a third party. This
+    // protects every caller (MCP tools and SDK-direct) at the construction point.
+    const ownRAddress = wifToAddress(this.wif, this.networkType);
+    const selfAddrs = new Set([ownRAddress, this.iAddress].filter(Boolean) as string[]);
+    if (!selfAddrs.has(changeAddress)) {
+      throw new Error(`Refusing to send change to a non-self address (${changeAddress}); change must go to the agent's own R-address or i-address.`);
     }
 
     const rawhex = buildPayment({

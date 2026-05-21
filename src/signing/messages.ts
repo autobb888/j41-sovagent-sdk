@@ -125,6 +125,29 @@ export function buildSelectClaimantsMessage(bountyId: string, applicantIds: stri
   return `J41-BOUNTY-SELECT|Bounty:${bountyId}|Selected:${applicantIds.join(',')}|Ts:${timestamp}`;
 }
 
+/**
+ * Reject a string formatted as a J41 protocol message. Used to stop the
+ * auth/onboarding challenge-signing paths from acting as a signing oracle: a
+ * MITM'd `/auth/challenge` could otherwise return a fully-formed `J41-*` message
+ * (deposit report, access envelope, status change) which the agent would sign
+ * with its identity key, handing the attacker a valid privileged signature.
+ * Normalizes compatibility/zero-width/dash forms so the prefix can't be
+ * smuggled past the check. Auth challenges are opaque/random and never begin
+ * with `J41-`, so this has no false positives.
+ */
+export function assertNotProtocolMessage(text: string): void {
+  if (/[\u200B-\u200F\u2028\u2029\u2060\uFEFF]/.test(text)) {
+    throw new Error('Refusing to sign a challenge containing zero-width or format characters.');
+  }
+  const head = text.normalize('NFKC').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/^\s+/, '');
+  // Block signed protocol messages of the form "J41-<ACTION>|...". The
+  // trailing pipe is the structural marker of a protocol message; opaque
+  // auth challenges (e.g. "j41-onboard:...") have no pipe and are allowed.
+  if (/^j41-[a-z0-9-]*\|/i.test(head)) {
+    throw new Error('Refusing to sign a J41-protocol-formatted challenge (possible MITM/forgery attempt).');
+  }
+}
+
 // ------------------------------------------
 // Deposit reporting
 // ------------------------------------------
