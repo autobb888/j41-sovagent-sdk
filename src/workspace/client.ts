@@ -13,6 +13,11 @@ import { RECONNECT_CONFIG } from '../chat/reconnect-config.js';
 /**
  * Validate that a workspace path is safe: relative, no `..` segments, no leading `/`.
  * Throws if invalid.
+ *
+ * NOTE: this is a client-side ADVISORY pre-flight check only. The serving side
+ * (BuyerWorkspace.resolveSafe) independently sanitizes every path with a
+ * resolve-and-prefix check and is the authoritative traversal guard — never
+ * rely on this function alone.
  */
 function assertSafePath(path: string): void {
   if (!path || typeof path !== 'string') {

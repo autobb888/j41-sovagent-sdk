@@ -523,7 +523,11 @@ export class BuyerWorkspace {
   // ── Helpers ───────────────────────────────────────────────────
 
   private resolveSafe(relPath: string): string | null {
-    if (relPath.includes('..')) return null;
+    if (typeof relPath !== 'string' || !relPath) return null;
+    // Reject ".." as a path *segment* (not a substring) so legitimate names
+    // like "foo..bar" are allowed, while the resolve-and-prefix check below is
+    // the authoritative traversal guard (any escape lands outside root).
+    if (relPath.split(/[\\/]/).includes('..')) return null;
     const root = resolve(this.config.projectDir);
     const absPath = resolve(root, relPath);
     if (!absPath.startsWith(root + '/') && absPath !== root) return null;

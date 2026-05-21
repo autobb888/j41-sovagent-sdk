@@ -1673,12 +1673,17 @@ export class J41Client {
   // ------------------------------------------
 
   /** Verify a payment transaction on-chain */
-  async verifyPayment(params: { txid: string; expectedAddress: string; expectedAmount: number; currency: string }): Promise<VerifyPaymentResponse> {
+  async verifyPayment(params: { txid: string; expectedAddress: string; expectedAmount: number; currency: string; expectedSender?: string }): Promise<VerifyPaymentResponse> {
     const query = new URLSearchParams();
     query.set('txid', params.txid);
     query.set('expectedAddress', params.expectedAddress);
     query.set('expectedAmount', String(params.expectedAmount));
     query.set('currency', params.currency);
+    // When supplied, the platform verifies the funding tx originated from this
+    // VerusID/address and echoes the resolved sender (see backend-requests/
+    // deposit-sender-verification.md). Older platforms ignore it and omit the
+    // sender fields; callers must treat a missing senderVerified as "unknown".
+    if (params.expectedSender) query.set('expectedSender', params.expectedSender);
     const res = await this.request<{ data: VerifyPaymentResponse }>('GET', `/v1/tx/verify-payment?${query}`);
     return res.data;
   }
@@ -2540,10 +2545,33 @@ export interface PaymentAddressResponse {
 export interface VerifyPaymentResponse {
   txid: string;
   verified: boolean;
+  /**
+   * Why verification failed, or null when verified. One of:
+   * 'address_not_paid' | 'amount_too_low' | 'insufficient_confirmations' |
+   * 'sender_mismatch'. On a provable sender mismatch the platform forces
+   * `verified=false` with reason 'sender_mismatch'.
+   */
+  reason: string | null;
+  /** Amount actually paid to the expected address. */
+  actualAmount: number;
+  /** Amount the caller asserted. */
+  expectedAmount: number;
   confirmations: number;
-  amount: number;
-  address: string;
+  /** The expected recipient address that was checked. */
+  toAddress: string;
   currency: string;
+  /**
+   * Sender verification (populated only when `expectedSender` was passed AND
+   * the platform supports it — advertised via the `tx.sender-verification`
+   * feature flag on /health). `senderVerified === true` means the funding tx
+   * provably originated from the expected sender; `senderVerusId`/`senderAddress`
+   * echo the resolved source. Fields are OMITTED (not false) when sender
+   * resolution is genuinely unavailable (coinbase input, unfetchable prevout,
+   * >50 inputs, unresolvable identity).
+   */
+  senderVerified?: boolean;
+  senderVerusId?: string;
+  senderAddress?: string;
 }
 
 // ------------------------------------------

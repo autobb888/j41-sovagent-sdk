@@ -22,6 +22,28 @@ export type { AccessRequest, AccessEnvelope, AccessPayload } from './types.js';
 
 const HKDF_INFO = 'j41-key-envelope-v1';
 
+/** Default freshness window for access requests/envelopes (seconds). */
+const DEFAULT_MAX_AGE_SECONDS = 300;
+
+/**
+ * Options for access-request/envelope verification.
+ *
+ * The SDK is stateless, so durable replay protection (a seen-nonce store) must
+ * be supplied by the caller via `isReplay` — e.g. the dispatcher's nonce-cache.
+ */
+export interface AccessVerifyOptions {
+  /** Max age (seconds) for the signed timestamp. Default 300. */
+  maxAgeSeconds?: number;
+  /** Current time as unix seconds (override for testing). */
+  now?: number;
+  /**
+   * Replay guard. Called with the request nonce AFTER the signature checks out;
+   * return true if the nonce has been seen before (verification then fails).
+   * Implementations typically check-and-record in one call.
+   */
+  isReplay?: (nonce: string) => boolean | Promise<boolean>;
+}
+
 // --- Helpers ---
 
 /** Decode a WIF private key to raw 32-byte Uint8Array. Validates length. */
@@ -222,7 +244,22 @@ export async function verifyAccessEnvelope(
   client: { getAgent(verusId: string): Promise<any> },
   sellerVerusId: string,
   network: 'verus' | 'verustest' = 'verustest',
+  opts: AccessVerifyOptions = {},
 ): Promise<boolean> {
+  const now = opts.now ?? Math.floor(Date.now() / 1000);
+  const maxAge = opts.maxAgeSeconds ?? DEFAULT_MAX_AGE_SECONDS;
+
+  // Expiry — NEVER accept an envelope whose API key has already expired. The
+  // expiresAt is part of the signed canonical string, but a valid signature
+  // alone does not imply the key is still usable.
+  const expiresMs = Date.parse(envelope.expiresAt);
+  if (!Number.isFinite(expiresMs) || expiresMs <= now * 1000) return false;
+
+  // Clock-skew guard — reject envelopes timestamped implausibly in the future.
+  // (We don't reject merely-old envelopes here; expiresAt is the validity bound,
+  // and a replayed envelope only ever decrypts for the original requester.)
+  if (!Number.isFinite(envelope.timestamp) || envelope.timestamp - now > maxAge) return false;
+
   const bitcoinMessage = require('bitcoinjs-message');
   const utxolib = require('@bitgo/utxo-lib');
   const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
@@ -259,7 +296,18 @@ export async function verifyAccessRequest(
   request: AccessRequest,
   client: { getAgent(verusId: string): Promise<any> },
   network: 'verus' | 'verustest' = 'verustest',
+  opts: AccessVerifyOptions = {},
 ): Promise<boolean> {
+  const now = opts.now ?? Math.floor(Date.now() / 1000);
+  const maxAge = opts.maxAgeSeconds ?? DEFAULT_MAX_AGE_SECONDS;
+
+  // Freshness — reject stale or future-dated requests before any network I/O.
+  // Bounds the replay window even when no nonce store is supplied; a captured
+  // request can no longer be re-submitted indefinitely to re-mint API keys.
+  if (!Number.isFinite(request.timestamp) || Math.abs(now - request.timestamp) > maxAge) {
+    return false;
+  }
+
   const bitcoinMessage = require('bitcoinjs-message');
   const utxolib = require('@bitgo/utxo-lib');
   const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
@@ -280,9 +328,18 @@ export async function verifyAccessRequest(
 
   const canonical = `J41-ACCESS-REQUEST|Buyer:${request.buyerVerusId}|Seller:${request.sellerVerusId}|EphPub:${request.ephemeralPubKey}|Nonce:${request.nonce}|Ts:${request.timestamp}`;
 
+  let signatureOk = false;
   try {
-    return bitcoinMessage.verify(canonical, rAddress, request.buyerSignature, net.messagePrefix);
+    signatureOk = bitcoinMessage.verify(canonical, rAddress, request.buyerSignature, net.messagePrefix);
   } catch {
     return false;
   }
+  if (!signatureOk) return false;
+
+  // Replay — consult the caller's seen-nonce store only for validly-signed
+  // requests (so attackers can't burn nonces with junk). The dispatcher passes
+  // a check-and-record hook backed by its nonce-cache.
+  if (opts.isReplay && (await opts.isReplay(request.nonce))) return false;
+
+  return true;
 }

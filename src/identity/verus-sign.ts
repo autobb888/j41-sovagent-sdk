@@ -122,10 +122,39 @@ export function signMessage(
 }
 
 /**
+ * Verify a legacy verifymessage-format signature (the format produced by
+ * {@link signMessage}) against a Verus R-address.
+ *
+ * Mirrors the verification used in `crypto/canonical.ts` — magic-hash +
+ * recoverable-signature recovery via bitcoinjs-message against the network's
+ * message prefix. Returns false on any malformed input rather than throwing,
+ * so callers can treat it as a boolean gate.
+ *
+ * @param message - The exact message string that was signed
+ * @param address - The signer's R-address
+ * @param signature - Base64-encoded signature from signMessage
+ * @param network - 'verus' or 'verustest'
+ */
+export function verifyVerusMessage(
+  message: string,
+  address: string,
+  signature: string,
+  network: 'verus' | 'verustest' = 'verustest',
+): boolean {
+  if (!message || !address || !signature) return false;
+  const networkConfig = network === 'verustest' ? VERUS_NETWORK : VERUS_MAINNET;
+  try {
+    return bitcoinMessage.verify(message, address, signature, networkConfig.messagePrefix);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sign a challenge (CIdentitySignature format)
- * 
+ *
  * Uses @bitgo/utxo-lib IdentitySignature for proper Verus compatibility.
- * 
+ *
  * @param wif - Private key in WIF format
  * @param challenge - The message/challenge to sign
  * @param identityAddress - The i-address or identity name signing
