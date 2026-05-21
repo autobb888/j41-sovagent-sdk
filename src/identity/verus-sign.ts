@@ -5,7 +5,7 @@
 
 import * as crypto from 'crypto';
 import bs58check from 'bs58check';
-import * as bitcoinMessage from 'bitcoinjs-message';
+import { signVerusMessage, verifyVerusMessage as nobleVerifyVerusMessage } from './verus-message.js';
 
 // @ts-ignore - VerusCoin fork
 import * as utxolib from '@bitgo/utxo-lib';
@@ -98,27 +98,13 @@ function privateKeyToAddress(privKey: Uint8Array, network: 'verus' | 'verustest'
 export function signMessage(
   wif: string,
   message: string,
-  network: 'verus' | 'verustest' = 'verustest'
+  _network: 'verus' | 'verustest' = 'verustest'
 ): string {
-  const networkConfig = network === 'verustest' ? VERUS_NETWORK : VERUS_MAINNET;
-  const { privateKey, compressed } = decodeWif(wif);
-  const privKeyBuf = Buffer.from(privateKey);
-
-  try {
-    // Use bitcoinjs-message implementation (same magic-hash/signature format used by BitGoJS/verifymessage)
-    const sig = bitcoinMessage.sign(
-      message,
-      privKeyBuf,
-      compressed,
-      networkConfig.messagePrefix,
-    );
-
-    return Buffer.from(sig).toString('base64');
-  } finally {
-    // Zero private key material
-    privateKey.fill(0);
-    privKeyBuf.fill(0);
-  }
+  // Implemented on @noble/curves (see identity/verus-message.ts) — byte-for-byte
+  // compatible with the legacy bitcoinjs-message output (cross-tested), without
+  // the unmaintained secp256k1@3/elliptic chain. The Verus message prefix is
+  // network-independent, so `network` no longer affects the bytes.
+  return signVerusMessage(wif, message);
 }
 
 /**
@@ -139,15 +125,10 @@ export function verifyVerusMessage(
   message: string,
   address: string,
   signature: string,
-  network: 'verus' | 'verustest' = 'verustest',
+  _network: 'verus' | 'verustest' = 'verustest',
 ): boolean {
-  if (!message || !address || !signature) return false;
-  const networkConfig = network === 'verustest' ? VERUS_NETWORK : VERUS_MAINNET;
-  try {
-    return bitcoinMessage.verify(message, address, signature, networkConfig.messagePrefix);
-  } catch {
-    return false;
-  }
+  // Delegates to the @noble implementation (network-independent prefix).
+  return nobleVerifyVerusMessage(message, address, signature);
 }
 
 /**

@@ -14,6 +14,7 @@ import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha256';
 import bs58check from 'bs58check';
 import { signMessage } from '../identity/signer.js';
+import { verifyVerusMessage } from '../identity/verus-message.js';
 import { wifToAddress } from '../tx/payment.js';
 import type { AccessRequest, AccessEnvelope, AccessPayload } from './types.js';
 
@@ -260,10 +261,6 @@ export async function verifyAccessEnvelope(
   // and a replayed envelope only ever decrypts for the original requester.)
   if (!Number.isFinite(envelope.timestamp) || envelope.timestamp - now > maxAge) return false;
 
-  const bitcoinMessage = require('bitcoinjs-message');
-  const utxolib = require('@bitgo/utxo-lib');
-  const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
-
   // Resolve seller's R-address from platform
   const agent = await client.getAgent(sellerVerusId);
   const rAddress = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address;
@@ -272,11 +269,7 @@ export async function verifyAccessEnvelope(
   // Reconstruct the canonical string that was signed
   const canonical = `J41-ACCESS-ENVELOPE|Cipher:${envelope.ciphertext}|IV:${envelope.iv}|Tag:${envelope.authTag}|DispPub:${envelope.dispatcherEphPub}|Ts:${envelope.timestamp}|Expires:${envelope.expiresAt}`;
 
-  try {
-    return bitcoinMessage.verify(canonical, rAddress, envelope.dispatcherSignature, net.messagePrefix);
-  } catch {
-    return false;
-  }
+  return verifyVerusMessage(canonical, rAddress, envelope.dispatcherSignature);
 }
 
 /**
@@ -308,10 +301,6 @@ export async function verifyAccessRequest(
     return false;
   }
 
-  const bitcoinMessage = require('bitcoinjs-message');
-  const utxolib = require('@bitgo/utxo-lib');
-  const net = network === 'verustest' ? utxolib.networks.verustest : utxolib.networks.verus;
-
   // The buyer signed with their R-address (buyerVerusId IS the R-address from wifToAddress)
   // But if J41 forwarded a resolved i-address, we need to look up the R-address
   let rAddress = request.buyerVerusId;
@@ -328,13 +317,7 @@ export async function verifyAccessRequest(
 
   const canonical = `J41-ACCESS-REQUEST|Buyer:${request.buyerVerusId}|Seller:${request.sellerVerusId}|EphPub:${request.ephemeralPubKey}|Nonce:${request.nonce}|Ts:${request.timestamp}`;
 
-  let signatureOk = false;
-  try {
-    signatureOk = bitcoinMessage.verify(canonical, rAddress, request.buyerSignature, net.messagePrefix);
-  } catch {
-    return false;
-  }
-  if (!signatureOk) return false;
+  if (!verifyVerusMessage(canonical, rAddress, request.buyerSignature)) return false;
 
   // Replay — consult the caller's seen-nonce store only for validly-signed
   // requests (so attackers can't burn nonces with junk). The dispatcher passes
