@@ -2545,15 +2545,29 @@ export interface PaymentAddressResponse {
 export interface VerifyPaymentResponse {
   txid: string;
   verified: boolean;
+  /**
+   * Why verification failed, or null when verified. One of:
+   * 'address_not_paid' | 'amount_too_low' | 'insufficient_confirmations' |
+   * 'sender_mismatch'. On a provable sender mismatch the platform forces
+   * `verified=false` with reason 'sender_mismatch'.
+   */
+  reason: string | null;
+  /** Amount actually paid to the expected address. */
+  actualAmount: number;
+  /** Amount the caller asserted. */
+  expectedAmount: number;
   confirmations: number;
-  amount: number;
-  address: string;
+  /** The expected recipient address that was checked. */
+  toAddress: string;
   currency: string;
   /**
    * Sender verification (populated only when `expectedSender` was passed AND
-   * the platform supports it). `senderVerified === true` means the funding tx
+   * the platform supports it — advertised via the `tx.sender-verification`
+   * feature flag on /health). `senderVerified === true` means the funding tx
    * provably originated from the expected sender; `senderVerusId`/`senderAddress`
-   * echo the resolved source. Absent on platforms that don't yet verify sender.
+   * echo the resolved source. Fields are OMITTED (not false) when sender
+   * resolution is genuinely unavailable (coinbase input, unfetchable prevout,
+   * >50 inputs, unresolvable identity).
    */
   senderVerified?: boolean;
   senderVerusId?: string;
