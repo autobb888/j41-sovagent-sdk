@@ -1,25 +1,32 @@
 /**
- * Verus message signing/verification on @noble/curves — replacing the
- * unmaintained bitcoinjs-message → secp256k1@3 → elliptic chain on the
- * signature hot path.
+ * Verus message signing/verification on @noble/curves — matching the
+ * Verus daemon's `signmessage`/`verifymessage` exactly.
  *
- * Produces and accepts the SAME bytes as the legacy `verifymessage` format
- * (magic-hash + recoverable ECDSA, base64 `[header][r][s]`), so on-chain and
- * cross-component verification is unaffected. Cross-checked byte-for-byte and
- * by mutual verification against bitcoinjs-message in the test suite before
- * this became the production path.
+ * IMPORTANT: this is NOT the Bitcoin magic-hash construction. Verus uses a
+ * different algorithm (single SHA-256, message is pre-hashed, prefix is
+ * properly varint-length-prefixed). See src/rpc/misc.cpp in VerusCoin:
+ *
+ *     ss << strMessage;                       // varint(msg.len) || msg
+ *     uint256 msgHash = ss.GetHash();          // SHA-256 (single)
+ *     ss.Reset();
+ *     ss << verusDataSignaturePrefix;          // varint(19) || "Verus signed data:\n"
+ *     ss << msgHash;                           // raw 32 bytes
+ *     finalHash = ss.GetHash();                // SHA-256 (single)
+ *     pubkey.RecoverCompact(finalHash, 65-byte sig)
+ *
+ * Earlier SDK versions inherited bitcoinjs-message's Bitcoin-style sha256d
+ * with the @bitgo/utxo-lib's wrong-length `\x15` prefix byte and were
+ * cross-incompatible with verusd. Fixed here; see test/verus-message-compat.test.ts
+ * for verusd-spec vectors.
  */
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import bs58check from 'bs58check';
 
-// Network-independent Verus message prefix (identical on verus/verustest).
-const MESSAGE_PREFIX = '\x15Verus signed data:\n';
-
-function sha256d(buf: Uint8Array): Uint8Array {
-  return sha256(sha256(buf));
-}
+// Bytes of the Verus `signmessage` prefix string — 19 chars, varint-length-prefixed
+// when serialized into the hash stream.
+const VERUS_PREFIX_BYTES = Buffer.from('Verus signed data:\n', 'utf8');
 
 function hash160(buf: Uint8Array): Uint8Array {
   return ripemd160(sha256(buf));
@@ -33,12 +40,15 @@ function varint(n: number): Uint8Array {
   throw new Error('message too long');
 }
 
-/** The magic hash that gets signed: sha256d(prefix || varint(len) || message). */
+/**
+ * The Verus message magic hash that gets signed/verified — matches the daemon.
+ *   msgHash   = SHA-256( varint(msg.len) || msg )
+ *   finalHash = SHA-256( varint(19) || "Verus signed data:\n" || msgHash )
+ */
 export function magicHash(message: string): Uint8Array {
-  const prefixBuf = Buffer.from(MESSAGE_PREFIX, 'binary');
   const msgBuf = Buffer.from(message, 'utf8');
-  const lenBuf = varint(msgBuf.length);
-  return sha256d(Buffer.concat([prefixBuf, lenBuf, msgBuf]));
+  const msgHash = sha256(Buffer.concat([varint(msgBuf.length), msgBuf]));
+  return sha256(Buffer.concat([varint(VERUS_PREFIX_BYTES.length), VERUS_PREFIX_BYTES, msgHash]));
 }
 
 /** Decode a WIF into { privateKey, compressed }. */

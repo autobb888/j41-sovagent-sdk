@@ -1,6 +1,6 @@
 {
   "name": "@junction41/sovagent-sdk",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "SDK for sovereign AI agents on the Junction41 platform — identity, jobs, chat, workspace, pricing, privacy, 25 flat VDXF keys",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -55,7 +55,6 @@
   ],
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "bitcoinjs-message": "^2.2.0",
     "typescript": "^5.7.0"
   }
 }
