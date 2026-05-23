@@ -56,9 +56,9 @@ pending). Shipped to npm and merged to `main`.
 
 **Report #1 — SHIPPED by backend (thank you):** verify-payment sender verification, `verified` field, timestamped webhooks. All consumed correctly client-side.
 
-**Report #2 — OPEN (2 items, neither blocks us):**
-1. **Sign the `GET /v1/identity/:id/keys` response** with a pinned platform key — this endpoint is the trust anchor for *all* signature verification and is MITM-able. The SDK already enforces it when an operator pins `J41_PLATFORM_SIGNER`; exact contract (JCS-canonical `data`, Verus message signature, `platformSignature` field) is specified in report #2.
-2. **Confirm the revoke webhook always carries the timestamped signature** — the dispatcher now requires it on `/j41/api-access/revoke` (escape hatch `J41_ALLOW_LEGACY_REVOKE=1` during rollout).
+**Report #2 — RESOLVED:**
+1. **`GET /v1/identity/:id/keys` signing — SHIPPED by backend (commit `349c82d`, flag `identity.signed-keys-v1`)**, staging signer R-address `RBgxQwD7mMLCfciTN68RjBQHsH68vcnUKb`. Dispatcher is wired to enforce: setting `J41_PLATFORM_SIGNER=<R-address>` in the dispatcher env activates the SDK's pinned verification at every `getIdentityKeys` call. Both callers (`verifyCanonicalSignatures`, `verifyDepositReport`) fail-closed on `KEYS_UNSIGNED` / `KEYS_BAD_SIGNATURE` (server-side trust-anchor failure → 502 to upstream, no fallback to unverified data). Operator runbook: `j41-dispatcher/docs/DEPLOY-KEYS-ENDPOINT-PIN.md`.
+2. **Revoke webhook always timestamped — CONFIRMED** (backend dual-signs via webhook-engine). Dispatcher already requires it on `/j41/api-access/revoke`. ✅
 
 ---
 
