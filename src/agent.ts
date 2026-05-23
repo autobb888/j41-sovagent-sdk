@@ -18,6 +18,7 @@ import { EventEmitter } from 'node:events';
 import { J41Client } from './client/index.js';
 import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypair.js';
 import { signMessage } from './identity/signer.js';
+import type { RemoteSigner, BrokerSignRequest, BrokerSignResponse } from './identity/remote-signer.js';
 import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage, assertNotProtocolMessage } from './signing/messages.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
@@ -78,6 +79,22 @@ export interface J41AgentConfig {
   /** Job handler config */
   jobConfig?: JobHandlerConfig;
   network?: 'verus' | 'verustest';
+  /**
+   * Remote signer for protocol message signing. When set, the agent uses
+   * this instead of the local WIF for every protocol-message signing path
+   * (auth challenge, accept, deliver, dispute response, status, attestation,
+   * bounty/job/review payloads). The host-side **constrained-signer broker**
+   * (`@junction41/dispatcher/sign-broker`) is the production implementation —
+   * it lets the agent run inside an untrusted job container WITHOUT the WIF.
+   *
+   * On-chain transaction building (`buildIdentityUpdateTx`, `buildPayment`,
+   * `buildMultiPayment`) still requires a local WIF — those operations move
+   * host-side under the broker plan and are not invoked from a remote-signer
+   * agent. Calling them in remote-signer-only mode throws.
+   *
+   * See `RemoteSigner` for the contract.
+   */
+  signer?: RemoteSigner;
 }
 
 export class J41Agent extends EventEmitter {
@@ -86,6 +103,7 @@ export class J41Agent extends EventEmitter {
   private identityName: string | null;
   private iAddress: string | null;
   private wif: string | null;
+  private signer: RemoteSigner | null;
   private handler: JobHandler | null;
   private jobConfig: JobHandlerConfig;
   private networkType: 'verus' | 'verustest' = 'verustest';
@@ -121,6 +139,7 @@ export class J41Agent extends EventEmitter {
       await this.login();
     });
     this.wif = config.wif || null;
+    this.signer = config.signer || null;
     this.identityName = config.identityName || null;
     this.iAddress = config.iAddress || null;
     this.handler = config.handler || null;
@@ -134,6 +153,100 @@ export class J41Agent extends EventEmitter {
         console.error('[J41] Unhandled error:', err instanceof Error ? err.message : err);
       }
     });
+  }
+
+  /**
+   * True if this agent is configured to delegate signing to a remote signer
+   * (i.e. the dispatcher's host-side broker). Exposed so callers can take
+   * different paths without poking at internals.
+   */
+  get usesRemoteSigner(): boolean {
+    return this.signer !== null;
+  }
+
+  /**
+   * Sign an arbitrary protocol message. Prefers the configured remote
+   * signer when present; falls back to the local WIF. Used for non-broker-
+   * gated paths (auth challenge, registerWithJ41 payload, status changes,
+   * bounty/job/review payloads, attestations).
+   *
+   * Throws if neither a signer nor a WIF is configured.
+   */
+  private async _signMessage(message: string): Promise<string> {
+    if (this.signer) return this.signer.signMessage(message);
+    if (!this.wif) throw new Error('WIF key required (no remote signer configured)');
+    return signMessage(this.wif, message, this.networkType);
+  }
+
+  /**
+   * Sign a structured broker-gated request (accept, deliver, dispute_respond).
+   * Prefers the configured remote signer when present; falls back to building
+   * the canonical message locally + signing with the WIF.
+   *
+   * The fallback is what the existing in-process agent has always done; the
+   * broker-backed path differs in that the dispatcher RECONSTRUCTS the
+   * message from its authoritative job record so a compromised container
+   * cannot inflate amounts or sign for the wrong job.
+   *
+   * `jobCtx` is required for the WIF-fallback path (the agent already has
+   * the fetched job on hand at the call site) and IGNORED by the remote
+   * signer (the broker re-fetches the authoritative job itself — it never
+   * trusts caller-supplied amount/buyer/jobHash for protocol-gated ops).
+   *
+   * Throws if neither a signer nor a WIF is configured.
+   */
+  private async _signBrokered(
+    req: BrokerSignRequest,
+    jobCtx?: { jobHash?: string; buyerVerusId?: string; amount?: number | string; currency?: string },
+  ): Promise<BrokerSignResponse> {
+    if (this.signer) return this.signer.signBrokered(req);
+    if (!this.wif) throw new Error('WIF key required (no remote signer configured)');
+    return this._signBrokeredLocally(req, jobCtx);
+  }
+
+  /**
+   * Local fallback for `_signBrokered` — used only when no `RemoteSigner`
+   * was supplied. Replicates the message construction that lived inline at
+   * each call site before this refactor (so behaviour is byte-identical on
+   * the legacy path).
+   *
+   * Requires `this.wif` and, for `accept`, an authoritative `job` object the
+   * caller fetches from the platform.
+   */
+  private async _signBrokeredLocally(
+    req: BrokerSignRequest,
+    job?: { jobHash?: string; buyerVerusId?: string; amount?: number | string; currency?: string },
+  ): Promise<BrokerSignResponse> {
+    if (!this.wif) throw new Error('WIF key required');
+    const timestamp = Math.floor(Date.now() / 1000);
+    let message: string;
+    switch (req.type) {
+      case 'accept': {
+        if (!job?.jobHash || !job.buyerVerusId || job.amount == null || !job.currency) {
+          throw new Error(
+            '_signBrokeredLocally(accept) requires job{jobHash,buyerVerusId,amount,currency}',
+          );
+        }
+        message = `J41-ACCEPT|Job:${job.jobHash}|Buyer:${job.buyerVerusId}|Amt:${job.amount} ${job.currency}|Ts:${timestamp}|I accept this job and commit to delivering the work.`;
+        break;
+      }
+      case 'deliver': {
+        if (!job?.jobHash) throw new Error('_signBrokeredLocally(deliver) requires job.jobHash');
+        message = `J41-DELIVER|Job:${job.jobHash}|Delivery:${req.deliveryHash}|Ts:${timestamp}|I have delivered the work for this job.`;
+        break;
+      }
+      case 'dispute_respond': {
+        if (!job?.jobHash) throw new Error('_signBrokeredLocally(dispute_respond) requires job.jobHash');
+        message = buildDisputeRespondMessage({ jobHash: job.jobHash, action: req.action, timestamp });
+        break;
+      }
+      default: {
+        const _exhaustive: never = req;
+        throw new Error(`Unsupported brokered request type: ${JSON.stringify(_exhaustive)}`);
+      }
+    }
+    const signature = signMessage(this.wif, message, this.networkType);
+    return { signature, timestamp, message };
   }
 
   /**
@@ -183,7 +296,7 @@ export class J41Agent extends EventEmitter {
   }
 
   private async _loginImpl(): Promise<string> {
-    if (!this.wif) throw new Error('WIF key required');
+    if (!this.wif && !this.signer) throw new Error('WIF key or remote signer required');
     if (!this.identityName) throw new Error('Identity name required');
 
     const challengeRes = await this._client.getAuthChallenge();
@@ -199,8 +312,9 @@ export class J41Agent extends EventEmitter {
 
     // Domain guard: never let a (MITM-able) server challenge be a J41-protocol
     // message we'd sign with our identity key — that would be a signing oracle.
+    // The remote signer's own policy should also enforce this; we defend in depth.
     assertNotProtocolMessage(challengeRes.challenge);
-    const signature = signMessage(this.wif, challengeRes.challenge, this.networkType);
+    const signature = await this._signMessage(challengeRes.challenge);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
@@ -420,7 +534,7 @@ export class J41Agent extends EventEmitter {
     };
 
     const message = canonicalize(payload);
-    const regSignature = signMessage(this.wif, message, this.networkType);
+    const regSignature = await this._signMessage(message);
 
     let isAlreadyRegistered = false;
     let agentIdResult = '';
@@ -707,14 +821,14 @@ export class J41Agent extends EventEmitter {
     }
 
     // 3. Toggle platform status
-    if (!this.wif) {
-      throw new Error('[J41] deactivate() requires a WIF key — agent was not initialized with signing capability');
+    if (!this.wif && !this.signer) {
+      throw new Error('[J41] deactivate() requires a WIF key or remote signer — agent was not initialized with signing capability');
     }
     const verusId = this.iAddress || this.identityName!;
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = randomUUID();
     const message = `J41-STATUS|Agent:${verusId}|Status:inactive|Ts:${timestamp}|Nonce:${nonce}`;
-    const signature = signMessage(this.wif, message, this.networkType);
+    const signature = await this._signMessage(message);
 
     const result = await this._client.setAgentStatus(
       verusId,
@@ -759,7 +873,7 @@ export class J41Agent extends EventEmitter {
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = randomUUID();
     const message = `J41-STATUS|Agent:${verusId}|Status:active|Ts:${timestamp}|Nonce:${nonce}`;
-    const signature = signMessage(this.wif!, message, this.networkType);
+    const signature = await this._signMessage(message);
 
     const result = await this._client.setAgentStatus(
       verusId,
@@ -995,10 +1109,21 @@ export class J41Agent extends EventEmitter {
   /**
    * Auto-deliver a job (used as default when session ends and no custom handler is set).
    * Signs a delivery message and submits it to the platform.
+   *
+   * `deliveryHash` is the SHA-256 of `deliveryMessage` — historically this
+   * was the sentinel string `"session-ended"`, but the broker's HEX64
+   * validator requires a real 64-char hex SHA-256, and hashing the message
+   * is also more honest (anyone can recompute it). Behaviour from the
+   * backend's perspective is unchanged; `deliveryHash` is an opaque
+   * commitment to whatever the agent considers "delivered".
    */
   private async autoDeliver(jobId: string): Promise<void> {
-    if (!this.wif || !this.iAddress) {
-      console.error(`[J41] Cannot auto-deliver job ${jobId}: WIF key and i-address required`);
+    if (!this.iAddress) {
+      console.error(`[J41] Cannot auto-deliver job ${jobId}: i-address required`);
+      return;
+    }
+    if (!this.wif && !this.signer) {
+      console.error(`[J41] Cannot auto-deliver job ${jobId}: WIF key or remote signer required`);
       return;
     }
 
@@ -1011,13 +1136,22 @@ export class J41Agent extends EventEmitter {
         return;
       }
 
-      const timestamp = Math.floor(Date.now() / 1000);
-      const deliveryHash = 'session-ended';
       const deliveryMessage = 'Session ended — work delivered automatically.';
-      const message = `J41-DELIVER|Job:${job.jobHash}|Delivery:${deliveryHash}|Ts:${timestamp}|I have delivered the work for this job.`;
-      const signature = signMessage(this.wif, message, this.networkType);
+      const { createHash } = await import('node:crypto');
+      const deliveryHash = createHash('sha256').update(deliveryMessage, 'utf8').digest('hex');
 
-      await this._client.deliverJob(jobId, deliveryHash, signature, timestamp, deliveryMessage);
+      const brokered = await this._signBrokered(
+        { type: 'deliver', jobId, deliveryHash },
+        { jobHash: job.jobHash },
+      );
+
+      await this._client.deliverJob(
+        jobId,
+        deliveryHash,
+        brokered.signature,
+        brokered.timestamp,
+        deliveryMessage,
+      );
       console.log(`[J41] ✅ Auto-delivered job ${jobId}`);
       this.emit('job:delivered', { jobId });
     } catch (err) {
@@ -1322,21 +1456,21 @@ export class J41Agent extends EventEmitter {
     reworkCost?: number;
     message: string;
   }): Promise<{ status: string; dispute: object }> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
     if (!this.iAddress) throw new Error('Agent not initialized with i-address');
 
     const job = await this._client.getJob(jobId);
     if (!job.jobHash) throw new Error(`Job ${jobId} is missing jobHash — cannot sign dispute response`);
-    const jobHash = job.jobHash;
-    const timestamp = Math.floor(Date.now() / 1000);
 
-    const msg = buildDisputeRespondMessage({ jobHash, action: options.action, timestamp });
-    const signature = signMessage(this.wif, msg, this.networkType);
+    const brokered = await this._signBrokered(
+      { type: 'dispute_respond', jobId, action: options.action },
+      { jobHash: job.jobHash },
+    );
 
     const result = await this._client.respondToDispute(jobId, {
       ...options,
-      timestamp,
-      signature,
+      timestamp: brokered.timestamp,
+      signature: brokered.signature,
     });
 
     this.emit('dispute:responded', { jobId, action: options.action });
@@ -1347,15 +1481,18 @@ export class J41Agent extends EventEmitter {
    * Accept a rework offer (buyer side). Auto-signs the acceptance.
    */
   async acceptRework(jobId: string): Promise<{ status: string }> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
 
     const job = await this._client.getJob(jobId);
     if (!job.jobHash) throw new Error(`Job ${jobId} is missing jobHash — cannot sign rework acceptance`);
     const jobHash = job.jobHash;
     const timestamp = Math.floor(Date.now() / 1000);
 
+    // Rework-accept is not in the broker's gated set today; it's a buyer-side
+    // action and the message is rebuildable from public job state. Sign as a
+    // generic message — the signer's policy (if any) decides whether to allow.
     const msg = buildReworkAcceptMessage({ jobHash, timestamp });
-    const signature = signMessage(this.wif, msg, this.networkType);
+    const signature = await this._signMessage(msg);
 
     const result = await this._client.acceptRework(jobId, { timestamp, signature });
 
@@ -1412,8 +1549,8 @@ export class J41Agent extends EventEmitter {
             const decision = await this.handler.onJobRequested(job);
 
             if (decision === 'accept') {
-              if (!this.wif || !this.iAddress) {
-                this.emit('error', new Error(`Cannot accept job ${job.id}: WIF key and i-address required`));
+              if ((!this.wif && !this.signer) || !this.iAddress) {
+                this.emit('error', new Error(`Cannot accept job ${job.id}: WIF/remote-signer and i-address required`));
                 continue;
               }
               try {
@@ -1421,10 +1558,16 @@ export class J41Agent extends EventEmitter {
                   this.emit('error', new Error(`Cannot accept job ${job.id}: missing jobHash`));
                   continue;
                 }
-                const timestamp = Math.floor(Date.now() / 1000);
-                const acceptMessage = `J41-ACCEPT|Job:${job.jobHash}|Buyer:${job.buyerVerusId}|Amt:${job.amount} ${job.currency}|Ts:${timestamp}|I accept this job and commit to delivering the work.`;
-                const signature = signMessage(this.wif, acceptMessage, this.networkType);
-                await this._client.acceptJob(job.id, signature, timestamp);
+                const brokered = await this._signBrokered(
+                  { type: 'accept', jobId: job.id },
+                  {
+                    jobHash: job.jobHash,
+                    buyerVerusId: job.buyerVerusId,
+                    amount: job.amount,
+                    currency: job.currency,
+                  },
+                );
+                await this._client.acceptJob(job.id, brokered.signature, brokered.timestamp);
                 this.seenJobIds.add(job.id);
                 this.emit('job:accepted', job);
                 // Auto-join chat room if chat is connected
@@ -1561,13 +1704,15 @@ export class J41Agent extends EventEmitter {
     },
     network?: 'verus' | 'verustest',
   ): Promise<DeletionAttestation> {
-    const net = network ?? this.networkType;
-    if (!this.wif) {
-      throw new Error('WIF key required for signing attestations');
+    if (!this.wif && !this.signer) {
+      throw new Error('WIF key or remote signer required for signing attestations');
     }
     if (!this.identityName) {
       throw new Error('Agent must be registered before attesting deletions');
     }
+    // `network` is honored only when falling back to the local WIF path.
+    // Remote signers are constructed knowing their own network.
+    const net = network ?? this.networkType;
 
     const now = new Date().toISOString();
     const payload = generateAttestationPayload({
@@ -1580,7 +1725,13 @@ export class J41Agent extends EventEmitter {
       attestedBy: this.identityName,
     });
 
-    const attestation = signAttestation(payload, this.wif, net);
+    let attestation;
+    if (this.signer) {
+      const { signAttestationWith } = await import('./privacy/attestation.js');
+      attestation = await signAttestationWith(payload, (msg) => this.signer!.signMessage(msg));
+    } else {
+      attestation = signAttestation(payload, this.wif!, net);
+    }
 
     // Submit to platform
     await this._client.submitAttestation(attestation);
@@ -1635,12 +1786,12 @@ export class J41Agent extends EventEmitter {
     maxClaimants?: number;
     applicationDeadline?: string;
   }): Promise<{ id: string; status: string }> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
 
     const currency = data.currency || 'VRSCTEST';
     const timestamp = Math.floor(Date.now() / 1000);
     const msg = buildPostBountyMessage(data.title, data.amount, currency, timestamp);
-    const signature = signMessage(this.wif, msg, this.networkType);
+    const signature = await this._signMessage(msg);
 
     const result = await this._client.postBounty({
       title: data.title,
@@ -1663,11 +1814,11 @@ export class J41Agent extends EventEmitter {
    * Signs the application message and submits via the client.
    */
   async applyToBounty(bountyId: string, message?: string): Promise<{ id: string }> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
 
     const timestamp = Math.floor(Date.now() / 1000);
     const msg = buildApplyBountyMessage(bountyId, timestamp);
-    const signature = signMessage(this.wif, msg, this.networkType);
+    const signature = await this._signMessage(msg);
 
     const result = await this._client.applyToBounty(bountyId, {
       message,
@@ -1717,7 +1868,7 @@ export class J41Agent extends EventEmitter {
     sovguardEnabled?: boolean;
     privateMode?: boolean;
   }): Promise<Job> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
     await this.login();
 
     // Auto-resolve seller's payment address if not provided
@@ -1743,7 +1894,7 @@ export class J41Agent extends EventEmitter {
       sovguardEnabled: data.sovguardEnabled,
     });
 
-    const signature = signMessage(this.wif, message, this.networkType);
+    const signature = await this._signMessage(message);
 
     const job = await this._client.createJob({
       ...data,
@@ -1761,13 +1912,13 @@ export class J41Agent extends EventEmitter {
    * Signs the completion message automatically.
    */
   async completeJob(jobId: string): Promise<Job> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
     await this.login();
 
     const jobData = await this._client.getJob(jobId);
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `J41-COMPLETE|Job:${jobData.jobHash}|Ts:${timestamp}|I confirm the work has been delivered satisfactorily.`;
-    const signature = signMessage(this.wif, message, this.networkType);
+    const signature = await this._signMessage(message);
 
     return this._client.completeJob(jobId, signature, timestamp);
   }
@@ -1782,7 +1933,7 @@ export class J41Agent extends EventEmitter {
     rating: number;
     message?: string;
   }): Promise<{ inboxId: string; status: string }> {
-    if (!this.wif) throw new Error('Agent not initialized with WIF');
+    if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
     await this.login();
 
     const timestamp = Math.floor(Date.now() / 1000);
@@ -1796,7 +1947,7 @@ export class J41Agent extends EventEmitter {
       timestamp,
     });
 
-    const signature = signMessage(this.wif, msgResult.message, this.networkType);
+    const signature = await this._signMessage(msgResult.message);
 
     const buyerVerusId = this.identityName
       ? (this.identityName.endsWith('@') ? this.identityName : this.identityName + '@')

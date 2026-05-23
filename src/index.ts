@@ -41,6 +41,14 @@ export { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypai
 // Message signing
 export { signMessage, signChallenge, verifyMessage } from './identity/signer.js';
 
+// Remote signer (host-side broker integration — let agents run without a WIF)
+export {
+  createLocalSigner,
+  type RemoteSigner,
+  type BrokerSignRequest,
+  type BrokerSignResponse,
+} from './identity/remote-signer.js';
+
 // LoginConsent authentication
 export { loginWithConsent, type LoginConsentResult } from './auth/login-consent.js';
 
@@ -72,6 +80,7 @@ export { PRIVACY_TIERS, type PrivacyTier, type PrivacyTierMeta } from './privacy
 export {
   generateAttestationPayload,
   signAttestation,
+  signAttestationWith,
   verifyAttestationFormat,
   type DeletionAttestation,
   type AttestationParams,
