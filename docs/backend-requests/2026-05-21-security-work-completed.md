@@ -15,7 +15,7 @@ pending). Shipped to npm and merged to `main`.
 ---
 
 ## Shipped artifacts
-- **npm:** `@junction41/sovagent-sdk@2.3.0` (live). Consumers (dispatcher, mcp-server) pinned + locked to 2.3.0.
+- **npm:** `@junction41/sovagent-sdk@2.3.1` (live). Consumers (dispatcher, mcp-server) pinned + locked to 2.3.1. (2.3.1 fixes a Verus message sign/verify interop bug vs verusd that was missed by a tautological cross-test in 2.3.0 — pinning the keys endpoint requires 2.3.1+.)
 - **git:** all work merged to `main` on all three repos. Tests: **SDK 134 · MCP 67 · dispatcher 70 — all green**; dispatcher `--frozen-lockfile` clean (Docker build path verified).
 
 ---
