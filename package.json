@@ -44,6 +44,7 @@
   "packageManager": "yarn@1.22.22",
   "dependencies": {
     "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#5e82f4fd",
+    "bn.js": "^5.2.0",
     "bs58check": "2.0.0",
     "json-canonicalize": "^2.0.0",
     "socket.io-client": "^4.8.3",
