@@ -57,7 +57,7 @@ function canonicalize(payload: Omit<DeletionAttestation, 'signature'>): string {
 
 /**
  * Sign a deletion attestation payload.
- * 
+ *
  * @param payload - The attestation payload (without signature)
  * @param wif - WIF private key for signing
  * @param network - 'verus' or 'verustest' (default: 'verustest')
@@ -75,6 +75,22 @@ export function signAttestation(
     ...payload,
     signature,
   };
+}
+
+/**
+ * Async variant that delegates signing to a caller-supplied function. Lets
+ * `J41Agent.attestDeletion` route through a `RemoteSigner` (host-side broker)
+ * instead of holding a WIF in the container. The signed bytes are the same
+ * canonical-JCS string as `signAttestation`, so signatures are
+ * cross-verifiable between the two paths.
+ */
+export async function signAttestationWith(
+  payload: Omit<DeletionAttestation, 'signature'>,
+  signFn: (message: string) => Promise<string>,
+): Promise<DeletionAttestation> {
+  const message = canonicalize(payload);
+  const signature = await signFn(message);
+  return { ...payload, signature };
 }
 
 /**
