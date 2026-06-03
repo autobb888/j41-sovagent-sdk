@@ -7,6 +7,7 @@
  */
 
 import { signMessage } from '../identity/signer.js';
+import { verifyMessage as verusVerifyMessage } from '../identity/signer.js';
 import { canonicalize as jsonCanonicalize } from 'json-canonicalize';
 
 export interface DeletionAttestation {
@@ -128,4 +129,32 @@ export function verifyAttestationFormat(attestation: unknown): attestation is De
   }
 
   return true;
+}
+
+/**
+ * Verify the cryptographic signature on a DeletionAttestation against an
+ * expected primary R-address. Reconstructs the canonical JCS payload (sans
+ * signature), then calls verusVerifyMessage.
+ *
+ * Audit 2026-06-02 M-SDK-funds-2 — verifyAttestationFormat was exported
+ * without this companion, making forge-by-omission easy: callers could
+ * shape-check an attestation and skip the crypto. Always pair the two:
+ *
+ *   verifyAttestationFormat(att);
+ *   verifyAttestationSignature(att, expectedRAddress);
+ *
+ * Returns true on a valid signature; false on a malformed payload or sig
+ * mismatch. Never throws (use verifyAttestationFormat for shape errors).
+ */
+export function verifyAttestationSignature(
+  attestation: DeletionAttestation,
+  expectedAddress: string,
+): boolean {
+  try {
+    const { signature, ...payload } = attestation;
+    const message = canonicalize(payload);
+    return verusVerifyMessage(message, expectedAddress, signature);
+  } catch {
+    return false;
+  }
 }

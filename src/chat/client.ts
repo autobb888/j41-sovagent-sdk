@@ -146,6 +146,9 @@ export class ChatClient {
     return new Promise((resolve, reject) => {
       let resolved = false;
 
+      // Audit 2026-06-02 M-SDK-ddos-4: cap inbound Socket.IO message size.
+      // Default socket.io-client has no per-message size limit; a hostile
+      // server could deliver multi-GB events and OOM the client.
       this.socket = io(this.config.apiUrl, {
         path: '/ws',
         auth: { token: chatToken },
@@ -153,6 +156,8 @@ export class ChatClient {
           'Cookie': `verus_session=${this.config.sessionToken}`,
         },
         transports: ['websocket', 'polling'],
+        // 1 MB inbound message cap; override via J41_CHAT_MAX_MESSAGE_BYTES.
+        ...({ maxPayload: Number(process.env.J41_CHAT_MAX_MESSAGE_BYTES ?? 1024 * 1024) } as any),
         ...RECONNECT_CONFIG,
       });
 

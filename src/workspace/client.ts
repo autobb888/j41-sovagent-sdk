@@ -32,7 +32,11 @@ function assertSafePath(path: string): void {
   }
 }
 
-const MAX_RESULT_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_RESULT_SIZE = 10 * 1024 * 1024; // 10MB per item
+// Audit 2026-06-02 M-SDK-ddos-1: per-item 10MB was per-item only — a hostile
+// relay could send 10000 items of 9.9MB each. Bound the aggregate too.
+const MAX_RESULT_AGGREGATE = Number(process.env.J41_WORKSPACE_MAX_RESULT_AGGREGATE ?? 40 * 1024 * 1024); // 40MB total
+const MAX_RESULT_ITEMS = Number(process.env.J41_WORKSPACE_MAX_RESULT_ITEMS ?? 1024);
 
 interface McpResultContent {
   type: string;
@@ -54,9 +58,13 @@ function validateMcpResult(data: any): {
 
   if (data.success) {
     if (!data.result || !Array.isArray(data.result.content)) return null;
+    if (data.result.content.length > MAX_RESULT_ITEMS) return null;
+    let aggregate = 0;
     for (const item of data.result.content) {
       if (typeof item?.type !== 'string' || typeof item?.text !== 'string') return null;
       if (item.text.length > MAX_RESULT_SIZE) return null;
+      aggregate += item.text.length;
+      if (aggregate > MAX_RESULT_AGGREGATE) return null;
     }
   } else {
     if (data.error !== undefined && typeof data.error !== 'string') return null;
@@ -225,10 +233,13 @@ export class WorkspaceClient {
     return new Promise<void>((resolve, reject) => {
       let settled = false;
 
+      // Audit 2026-06-02 M-SDK-ddos-4 mirror: cap inbound Socket.IO message
+      // size on the workspace transport as well.
       this.socket = io(origin + '/jailbox', {
         path: '/ws',
         auth: { type: 'agent', token },
         transports: ['websocket', 'polling'],
+        ...({ maxPayload: Number(process.env.J41_WORKSPACE_MAX_MESSAGE_BYTES ?? 4 * 1024 * 1024) } as any),
         ...RECONNECT_CONFIG,
       });
 
@@ -326,12 +337,15 @@ export class WorkspaceClient {
     const id = `ws-${randomBytes(8).toString('hex')}`;
 
     return new Promise((resolve, reject) => {
-      // No timeout on writes — buyer reviews + approves in supervised mode
-      const timeoutMs = tool === 'write_file' ? 0 : 30_000;
+      // Audit 2026-06-02 M-SDK-ddos-2: write_file had a 2^31 - 1 ms (~24 day)
+      // "effectively no timeout" — a hostile relay could pin memory by simply
+      // never responding. Cap at J41_WORKSPACE_WRITE_TIMEOUT_MS (10 min default).
+      const writeTimeoutMs = Number(process.env.J41_WORKSPACE_WRITE_TIMEOUT_MS ?? 10 * 60 * 1000);
+      const timeoutMs = tool === 'write_file' ? writeTimeoutMs : 30_000;
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`Tool call timeout: ${tool}`));
-      }, timeoutMs || 2_147_483_647); // ~24 days = effectively no timeout for writes
+      }, timeoutMs);
 
       this.pendingRequests.set(id, { resolve, reject, timeout });
 

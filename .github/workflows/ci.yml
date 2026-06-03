@@ -17,7 +17,10 @@ jobs:
           node-version: '20'
           cache: 'yarn'
 
-      - run: yarn install
+      # Audit 2026-06-02 M-SDK-supply-1: --frozen-lockfile so any unintended
+      # lockfile drift is caught at CI time (especially relevant now that
+      # verus-typescript-primitives is pinned by commit hash in package.json).
+      - run: yarn install --frozen-lockfile
 
       - name: TypeScript build
         run: yarn build
