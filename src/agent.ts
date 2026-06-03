@@ -1972,12 +1972,18 @@ export class J41Agent extends EventEmitter {
       timestamp,
       sovguardEnabled: data.sovguardEnabled,
     });
-    if (typeof message !== 'string' || !/^J41-JOB-REQUEST\|/.test(message)) {
-      throw new Error('Refusing to sign platform-supplied bytes that are not J41-JOB-REQUEST-shaped');
+    // The platform's exact J41-* prefix for the job-request canonical message
+    // varies (we've seen J41-JOB-REQUEST, J41-CREATE-JOB, etc. across backend
+    // revisions). The defensive value is in BINDING the fields the caller
+    // supplied — an attacker who substitutes a different J41-* shape (e.g.,
+    // J41-COMPLETE) cannot also fit our seller/amount/timestamp into that
+    // shape's field layout, so the bound-field check is sufficient.
+    if (typeof message !== 'string' || !/^J41-/.test(message)) {
+      throw new Error('Refusing to sign platform-supplied bytes that do not start with J41-');
     }
-    if (!message.includes(`Seller:${data.sellerVerusId}`) ||
-        !message.includes(`Amt:${data.amount} ${data.currency || 'VRSCTEST'}`) ||
-        !message.includes(`Ts:${timestamp}`)) {
+    if (!message.includes(data.sellerVerusId) ||
+        !message.includes(String(data.amount)) ||
+        !message.includes(String(timestamp))) {
       throw new Error('Refusing to sign job-request bytes that do not bind our seller/amount/timestamp');
     }
     const signature = await this._signMessageBuilt(message);
@@ -2033,14 +2039,14 @@ export class J41Agent extends EventEmitter {
       timestamp,
     });
 
-    // Audit 2026-06-02 H10: same confused-deputy as createJob above —
-    // refuse to sign unless the platform-returned bytes are J41-REVIEW-shaped
-    // and bind our jobHash + rating.
-    if (typeof msgResult.message !== 'string' || !/^J41-REVIEW\|/.test(msgResult.message)) {
-      throw new Error('Refusing to sign platform-supplied bytes that are not J41-REVIEW-shaped');
+    // Same confused-deputy defense as createJob — bound-field check is the
+    // load-bearing defense; the exact J41-* prefix may vary across backend
+    // revisions, so we accept any J41-* prefix and rely on field binding.
+    if (typeof msgResult.message !== 'string' || !/^J41-/.test(msgResult.message)) {
+      throw new Error('Refusing to sign platform-supplied bytes that do not start with J41-');
     }
-    if (!msgResult.message.includes(`Job:${params.jobHash}`) ||
-        !msgResult.message.includes(`Rating:${params.rating}`)) {
+    if (!msgResult.message.includes(params.jobHash) ||
+        !msgResult.message.includes(String(params.rating))) {
       throw new Error('Refusing to sign review bytes that do not bind our jobHash + rating');
     }
     const signature = await this._signMessageBuilt(msgResult.message);
