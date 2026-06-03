@@ -61,6 +61,11 @@ export { buildPayment, buildMultiPayment, selectUtxos, wifToAddress, wifToPubkey
 // Safety — canary tokens + communication policy
 export { generateCanary, checkForCanaryLeak, protectSystemPrompt, type CanaryConfig } from './safety/canary.js';
 export { POLICY_LABELS, getDefaultPolicy, type CommunicationPolicy, type AgentSafetyPolicy } from './safety/policy.js';
+// Safety — source-trust-aware context scanning (vendored model-less scanner)
+export { scanContext } from './safety/context.js';
+export type {
+  ContextScanOptions, ContextScanResult, SourceTrust, TaintPolicy, TaintAction, TaintNotification,
+} from './safety/context.js';
 
 // Chat — SovGuard WebSocket client
 export { ChatClient, type ChatClientConfig, type IncomingMessage, type MessageHandler } from './chat/index.js';
