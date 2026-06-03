@@ -66,9 +66,29 @@ const REDACTION = '[redacted: suspected injected instruction]';
 
 export async function scanContext(text: string, options: ContextScanOptions): Promise<ContextScanResult> {
   const { source, policy, ...config } = options;
-  const scanResult = await scan(text, config);
   const trusted = TRUSTED_SOURCES.has(source);
-  const flagged = !trusted && !scanResult.safe;
+
+  // Short-circuit for trusted sources — we never muzzle them, so running
+  // ~223 regex patterns + indirect + perplexity is pure waste. Return a
+  // minimal allow result with a synthetic safe ScanResult. (Skipping the
+  // scan also means a future buggy/expensive pattern can't slow down the
+  // hot path for trusted text.)
+  if (trusted) {
+    const synthScan: ScanResult = {
+      safe: true,
+      score: 0,
+      classification: 'safe',
+      flags: [],
+      layers: [],
+      scannedAt: Date.now(),
+      degraded: true,
+      degradedLayers: ['classifier', 'semantic', 'trusted_source_skip'],
+    };
+    return { source, trusted: true, flagged: false, action: 'allow', text, scan: synthScan };
+  }
+
+  const scanResult = await scan(text, config);
+  const flagged = !scanResult.safe;
 
   if (!flagged) {
     return { source, trusted, flagged, action: 'allow', text, scan: scanResult };

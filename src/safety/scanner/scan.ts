@@ -17,6 +17,28 @@ import { perplexityScan } from './perplexity.js';
 
 const MAX_INPUT = 100_000;
 
+/**
+ * Run one detection layer, swallowing any exception and degrading to a
+ * `_layer_error`-flagged safe result. Critical: without this, a single layer
+ * throwing (a future regex syntax bug, a perplexity stack overflow on
+ * pathological input, a parser corner case) aborts the whole scan and the
+ * dispatcher wrapper fails-OPEN — handing the attacker a bypass by crafting
+ * input that crashes any one layer. Per-layer isolation preserves the
+ * defense even when one layer fails.
+ */
+function runLayer(name: string, fn: () => LayerResult): LayerResult {
+  try {
+    return fn();
+  } catch (e) {
+    return {
+      layer: name,
+      score: 0,
+      flags: [`${name}_layer_error`],
+      details: { error: e instanceof Error ? e.message : String(e) },
+    };
+  }
+}
+
 export async function scan(text: string, config: SovGuardConfig = {}): Promise<ScanResult> {
   const blockThreshold = config.blockThreshold ?? 0.7;
   const suspiciousThreshold = config.suspiciousThreshold ?? 0.3;
@@ -25,9 +47,11 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   const input = text.length > MAX_INPUT ? text.slice(0, MAX_INPUT) : text;
 
   const layers: LayerResult[] = [];
-  layers.push(regexScan(input));
-  layers.push(indirectInjectionScan(input));
-  if (config.enablePerplexity !== false) layers.push(perplexityScan(input));
+  layers.push(runLayer('regex', () => regexScan(input)));
+  layers.push(runLayer('indirect', () => indirectInjectionScan(input)));
+  if (config.enablePerplexity !== false) {
+    layers.push(runLayer('perplexity', () => perplexityScan(input)));
+  }
 
   // Model-less: combined score is the max across the available layers.
   const score = Math.min(layers.reduce((max, l) => Math.max(max, l.score), 0), 1.0);
