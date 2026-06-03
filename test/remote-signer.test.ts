@@ -66,28 +66,49 @@ describe('RemoteSigner — createLocalSigner', () => {
     assert.ok(verifyMessage('hello', kp.address, sig));
   });
 
+  // Audit 2.5.1 L-SDK-auth-2: the deliver / dispute_respond synthetic-jobId
+  // paths are gated behind J41_LOCAL_SIGNER_TEST_MODE=1 so production agents
+  // can't silently fall through. Tests must set + clear it explicitly.
   it('signBrokered({type:"deliver"}) signs a deliver message bound to jobId + deliveryHash', async () => {
+    process.env.J41_LOCAL_SIGNER_TEST_MODE = '1';
+    try {
+      const kp = generateKeypair('verustest');
+      const signer = createLocalSigner(kp.wif, 'verustest');
+      const deliveryHash = 'a'.repeat(64);
+      const res = await signer.signBrokered({ type: 'deliver', jobId: 'job-hash-X', deliveryHash });
+      assert.ok(res.signature.length > 0);
+      assert.ok(res.timestamp > 0);
+      assert.match(res.message, /J41-DELIVER\|Job:job-hash-X\|Delivery:a{64}/);
+      assert.ok(verifyMessage(res.message, kp.address, res.signature));
+    } finally {
+      delete process.env.J41_LOCAL_SIGNER_TEST_MODE;
+    }
+  });
+
+  it('signBrokered({type:"deliver"}) refuses outside test mode (L-SDK-auth-2)', async () => {
     const kp = generateKeypair('verustest');
     const signer = createLocalSigner(kp.wif, 'verustest');
-    const deliveryHash = 'a'.repeat(64);
-    const res = await signer.signBrokered({ type: 'deliver', jobId: 'job-hash-X', deliveryHash });
-    assert.ok(res.signature.length > 0);
-    assert.ok(res.timestamp > 0);
-    assert.match(res.message, /J41-DELIVER\|Job:job-hash-X\|Delivery:a{64}/);
-    // The signature must verify against the WIF address and the returned message
-    assert.ok(verifyMessage(res.message, kp.address, res.signature));
+    await assert.rejects(
+      () => signer.signBrokered({ type: 'deliver', jobId: 'job-hash-X', deliveryHash: 'a'.repeat(64) }),
+      /authoritative jobHash|J41_LOCAL_SIGNER_TEST_MODE/,
+    );
   });
 
   it('signBrokered({type:"dispute_respond"}) signs a dispute-respond message', async () => {
-    const kp = generateKeypair('verustest');
-    const signer = createLocalSigner(kp.wif, 'verustest');
-    const res = await signer.signBrokered({
-      type: 'dispute_respond',
-      jobId: 'a'.repeat(64),
-      action: 'refund',
-    });
-    assert.match(res.message, /J41-DISPUTE-RESPOND\|/);
-    assert.ok(verifyMessage(res.message, kp.address, res.signature));
+    process.env.J41_LOCAL_SIGNER_TEST_MODE = '1';
+    try {
+      const kp = generateKeypair('verustest');
+      const signer = createLocalSigner(kp.wif, 'verustest');
+      const res = await signer.signBrokered({
+        type: 'dispute_respond',
+        jobId: 'a'.repeat(64),
+        action: 'refund',
+      });
+      assert.match(res.message, /J41-DISPUTE-RESPOND\|/);
+      assert.ok(verifyMessage(res.message, kp.address, res.signature));
+    } finally {
+      delete process.env.J41_LOCAL_SIGNER_TEST_MODE;
+    }
   });
 
   it('signBrokered({type:"accept"}) refuses locally (no authoritative job record)', async () => {
