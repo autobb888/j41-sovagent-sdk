@@ -115,10 +115,48 @@ export class J41Client {
         throw fetchErr;
       }
 
+      // Audit 2026-06-02 H6: bound the JSON response body so a hostile or
+      // compromised platform can't OOM the SDK with multi-GB chunked output.
+      // Default 8 MB is well above any J41 API response shape; raise via
+      // J41_MAX_RESPONSE_BYTES if a specific endpoint legitimately needs more.
+      const MAX_RESPONSE_BYTES = Number(process.env.J41_MAX_RESPONSE_BYTES ?? 8 * 1024 * 1024);
+      const declared = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+        response.body?.cancel().catch(() => {});
+        throw new J41Error(
+          `Response Content-Length ${declared} exceeds cap ${MAX_RESPONSE_BYTES} for ${method} ${path}`,
+          'RESPONSE_TOO_LARGE',
+          response.status,
+        );
+      }
       let data: Record<string, unknown>;
       try {
-        data = await response.json() as Record<string, unknown>;
-      } catch {
+        if (response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let received = 0;
+          let text = '';
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            received += value.byteLength;
+            if (received > MAX_RESPONSE_BYTES) {
+              await reader.cancel().catch(() => {});
+              throw new J41Error(
+                `Response body exceeded cap ${MAX_RESPONSE_BYTES} for ${method} ${path}`,
+                'RESPONSE_TOO_LARGE',
+                response.status,
+              );
+            }
+            text += decoder.decode(value, { stream: true });
+          }
+          text += decoder.decode();
+          data = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+        } else {
+          data = {};
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof J41Error) throw parseErr;
         throw new J41Error(
           `Non-JSON response from ${method} ${path} (HTTP ${response.status})`,
           'PARSE_ERROR',
@@ -640,6 +678,34 @@ export class J41Client {
     // primaryAddresses set can't be trusted. Unset by default → no behaviour
     // change until the backend ships signed responses (see backend report #2).
     const pinned = process.env.J41_PLATFORM_SIGNER;
+
+    // Audit 2026-06-02 H9: on mainnet, the platform signer pin is REQUIRED —
+    // letting the platform's getIdentityKeys response go unverified on mainnet
+    // means a MITM/compromised platform becomes the on-chain trust anchor for
+    // every downstream signature verification. On testnet the pin remains
+    // optional for dev workflows. Override with J41_REQUIRE_PLATFORM_SIGNER=0
+    // for legacy mainnet ops while the operator migrates (deprecated; will be
+    // removed in the next major release).
+    //
+    // We don't have a `networkType` field on the client, so detect mainnet by
+    // the base URL pattern OR the J41_NETWORK env. baseUrl test catches the
+    // default production endpoint; the env is the explicit override for
+    // operators on custom domains.
+    const requireOnMainnet = process.env.J41_REQUIRE_PLATFORM_SIGNER !== '0';
+    const looksLikeMainnet =
+      /^https:\/\/(api\.)?junction41\.(io|com|net)/i.test(this.baseUrl)
+      || process.env.J41_NETWORK === 'verus';
+    if (looksLikeMainnet && requireOnMainnet && !pinned) {
+      throw new J41Error(
+        'getIdentityKeys refused on mainnet: J41_PLATFORM_SIGNER is unset and the ' +
+        'platform-signed response is required for trust-anchor integrity on the ' +
+        'production network. Set J41_PLATFORM_SIGNER to the platform\'s R-address, ' +
+        'or J41_REQUIRE_PLATFORM_SIGNER=0 to opt out (deprecated).',
+        'PLATFORM_SIGNER_REQUIRED',
+        500,
+      );
+    }
+
     if (pinned) {
       const { platformSignature, ...signed } = data as Record<string, unknown>;
       if (typeof platformSignature !== 'string' || !platformSignature) {

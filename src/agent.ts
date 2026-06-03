@@ -172,7 +172,35 @@ export class J41Agent extends EventEmitter {
    *
    * Throws if neither a signer nor a WIF is configured.
    */
+  /**
+   * Sign an opaque (non-protocol-shaped) message. Audit 2026-06-02 H1/H4/H10:
+   * the protocol-shape guard is enforced here so any future callsite that
+   * forgets to validate is blocked rather than silently turned into a
+   * platform-signing-oracle.
+   *
+   * Callers that legitimately need to sign a `J41-*|...` string MUST:
+   *   1. Build the canonical message LOCALLY with one of the `build*Message`
+   *      helpers in signing/messages.ts (never sign bytes the platform
+   *      handed back), AND
+   *   2. Call `_signMessageBuilt` instead of this method.
+   *
+   * Both rules apply jointly — the local builder is what makes the bytes
+   * trustworthy, and `_signMessageBuilt` is the path that bypasses the guard
+   * for those audited callsites.
+   */
   private async _signMessage(message: string): Promise<string> {
+    assertNotProtocolMessage(message);
+    return this._signMessageBuilt(message);
+  }
+
+  /**
+   * Sign bytes that the SDK assembled itself via a local builder (or that a
+   * caller has shape-validated against the expected protocol prefix and
+   * fields). Adding a new callsite REQUIRES security review — every callsite
+   * must be auditable as "the platform cannot influence the resulting J41-*
+   * shape." See `_signMessage` doc above.
+   */
+  private async _signMessageBuilt(message: string): Promise<string> {
     if (this.signer) return this.signer.signMessage(message);
     if (!this.wif) throw new Error('WIF key required (no remote signer configured)');
     return signMessage(this.wif, message, this.networkType);
@@ -533,8 +561,9 @@ export class J41Agent extends EventEmitter {
       data: agentData,
     };
 
+    // Canonical JSON of locally-built payload — not a J41-* protocol message.
     const message = canonicalize(payload);
-    const regSignature = await this._signMessage(message);
+    const regSignature = await this._signMessageBuilt(message);
 
     let isAlreadyRegistered = false;
     let agentIdResult = '';
@@ -828,7 +857,7 @@ export class J41Agent extends EventEmitter {
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = randomUUID();
     const message = `J41-STATUS|Agent:${verusId}|Status:inactive|Ts:${timestamp}|Nonce:${nonce}`;
-    const signature = await this._signMessage(message);
+    const signature = await this._signMessageBuilt(message);
 
     const result = await this._client.setAgentStatus(
       verusId,
@@ -873,7 +902,7 @@ export class J41Agent extends EventEmitter {
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = randomUUID();
     const message = `J41-STATUS|Agent:${verusId}|Status:active|Ts:${timestamp}|Nonce:${nonce}`;
-    const signature = await this._signMessage(message);
+    const signature = await this._signMessageBuilt(message);
 
     const result = await this._client.setAgentStatus(
       verusId,
@@ -1326,13 +1355,31 @@ export class J41Agent extends EventEmitter {
       const reviewKeys = VDXF_KEYS.review;
       const vdxfAdditions: Record<string, unknown[]> = {};
 
+      // Audit 2026-06-02 H8: restrict allowed VDXF keys to the review.*
+      // namespace. Without this, a compromised platform inbox could pass any
+      // VDXF key in inboxItem.vdxfData — including agent.payAddress — and
+      // we'd write attacker-controlled data to our on-chain identity. The
+      // allowlist is the set of i-addresses under VDXF_KEYS.review.
+      const reviewAllowedIaddrs: Set<string> = new Set(Object.values(reviewKeys));
+
       // Check if vdxfData is already formatted (flat or legacy)
       if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
-        // Use pre-computed VDXF data from the inbox item
+        // Use pre-computed VDXF data from the inbox item, dropping any key
+        // outside the review namespace.
         for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
           if (value != null) {
+            if (!reviewAllowedIaddrs.has(key)) {
+              console.error(
+                `[J41] acceptReview ${inboxId}: dropping unexpected VDXF key ${key} ` +
+                `(not in review.* namespace) — possible platform tampering`,
+              );
+              continue;
+            }
             vdxfAdditions[key] = Array.isArray(value) ? value : [value];
           }
+        }
+        if (Object.keys(vdxfAdditions).length === 0) {
+          throw new Error(`acceptReview ${inboxId}: inbox vdxfData contained no review.* keys after whitelist`);
         }
       } else {
         // Build review.record as flat key
@@ -1407,11 +1454,25 @@ export class J41Agent extends EventEmitter {
 
       const vdxfAdditions: Record<string, unknown[]> = {};
 
+      // Audit 2026-06-02 H8 mirror: same whitelist for acceptJobRecord,
+      // restricted to job.* namespace.
+      const jobAllowedIaddrs: Set<string> = new Set(Object.values(VDXF_KEYS.job));
+
       if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
         for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
           if (value != null) {
+            if (!jobAllowedIaddrs.has(key)) {
+              console.error(
+                `[J41] acceptJobRecord ${inboxId}: dropping unexpected VDXF key ${key} ` +
+                `(not in job.* namespace) — possible platform tampering`,
+              );
+              continue;
+            }
             vdxfAdditions[key] = Array.isArray(value) ? value : [value];
           }
+        }
+        if (Object.keys(vdxfAdditions).length === 0) {
+          throw new Error(`acceptJobRecord ${inboxId}: inbox vdxfData contained no job.* keys after whitelist`);
         }
       } else {
         const jobRecord: Record<string, unknown> = {
@@ -1492,7 +1553,7 @@ export class J41Agent extends EventEmitter {
     // action and the message is rebuildable from public job state. Sign as a
     // generic message — the signer's policy (if any) decides whether to allow.
     const msg = buildReworkAcceptMessage({ jobHash, timestamp });
-    const signature = await this._signMessage(msg);
+    const signature = await this._signMessageBuilt(msg);
 
     const result = await this._client.acceptRework(jobId, { timestamp, signature });
 
@@ -1532,7 +1593,20 @@ export class J41Agent extends EventEmitter {
 
     try {
       const res = await this._client.getMyJobs({ status: 'requested', role: 'seller' });
-      const jobs = res.data || [];
+      // Audit 2026-06-02 H5: cap the per-poll job count. A compromised or
+      // buggy platform could otherwise return an arbitrarily large response
+      // and force unbounded per-job signer round-trips. The cap is well above
+      // any realistic backlog; oversize responses log + truncate rather than
+      // refuse outright (we still want to make progress on the first N).
+      const MAX_PER_POLL = Number(process.env.J41_MAX_JOBS_PER_POLL ?? 50);
+      const allJobs = res.data || [];
+      if (allJobs.length > MAX_PER_POLL) {
+        console.error(
+          `[J41] checkForJobs: response had ${allJobs.length} jobs; truncating to ` +
+          `${MAX_PER_POLL} (J41_MAX_JOBS_PER_POLL). Excess will appear on next poll.`,
+        );
+      }
+      const jobs = allJobs.slice(0, MAX_PER_POLL);
 
       for (const job of jobs) {
         // Stop processing if agent was stopped mid-poll
@@ -1791,7 +1865,7 @@ export class J41Agent extends EventEmitter {
     const currency = data.currency || 'VRSCTEST';
     const timestamp = Math.floor(Date.now() / 1000);
     const msg = buildPostBountyMessage(data.title, data.amount, currency, timestamp);
-    const signature = await this._signMessage(msg);
+    const signature = await this._signMessageBuilt(msg);
 
     const result = await this._client.postBounty({
       title: data.title,
@@ -1818,7 +1892,7 @@ export class J41Agent extends EventEmitter {
 
     const timestamp = Math.floor(Date.now() / 1000);
     const msg = buildApplyBountyMessage(bountyId, timestamp);
-    const signature = await this._signMessage(msg);
+    const signature = await this._signMessageBuilt(msg);
 
     const result = await this._client.applyToBounty(bountyId, {
       message,
@@ -1883,7 +1957,12 @@ export class J41Agent extends EventEmitter {
 
     const timestamp = Math.floor(Date.now() / 1000);
 
-    // Get canonical message from platform
+    // Audit 2026-06-02 H1/H10: previously signed whatever bytes the platform
+    // returned from getJobRequestMessage — letting a compromised/MITM'd
+    // platform substitute a J41-COMPLETE / J41-DEPOSIT-REPORT etc. and harvest
+    // a fund-loss signature from a benign createJob call. Refuse to sign
+    // unless the platform-returned bytes start with the expected job-request
+    // prefix AND embed our seller/amount/timestamp.
     const { message } = await this._client.getJobRequestMessage({
       sellerVerusId: data.sellerVerusId,
       description: data.description,
@@ -1893,8 +1972,15 @@ export class J41Agent extends EventEmitter {
       timestamp,
       sovguardEnabled: data.sovguardEnabled,
     });
-
-    const signature = await this._signMessage(message);
+    if (typeof message !== 'string' || !/^J41-JOB-REQUEST\|/.test(message)) {
+      throw new Error('Refusing to sign platform-supplied bytes that are not J41-JOB-REQUEST-shaped');
+    }
+    if (!message.includes(`Seller:${data.sellerVerusId}`) ||
+        !message.includes(`Amt:${data.amount} ${data.currency || 'VRSCTEST'}`) ||
+        !message.includes(`Ts:${timestamp}`)) {
+      throw new Error('Refusing to sign job-request bytes that do not bind our seller/amount/timestamp');
+    }
+    const signature = await this._signMessageBuilt(message);
 
     const job = await this._client.createJob({
       ...data,
@@ -1918,7 +2004,7 @@ export class J41Agent extends EventEmitter {
     const jobData = await this._client.getJob(jobId);
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `J41-COMPLETE|Job:${jobData.jobHash}|Ts:${timestamp}|I confirm the work has been delivered satisfactorily.`;
-    const signature = await this._signMessage(message);
+    const signature = await this._signMessageBuilt(message);
 
     return this._client.completeJob(jobId, signature, timestamp);
   }
@@ -1947,7 +2033,17 @@ export class J41Agent extends EventEmitter {
       timestamp,
     });
 
-    const signature = await this._signMessage(msgResult.message);
+    // Audit 2026-06-02 H10: same confused-deputy as createJob above —
+    // refuse to sign unless the platform-returned bytes are J41-REVIEW-shaped
+    // and bind our jobHash + rating.
+    if (typeof msgResult.message !== 'string' || !/^J41-REVIEW\|/.test(msgResult.message)) {
+      throw new Error('Refusing to sign platform-supplied bytes that are not J41-REVIEW-shaped');
+    }
+    if (!msgResult.message.includes(`Job:${params.jobHash}`) ||
+        !msgResult.message.includes(`Rating:${params.rating}`)) {
+      throw new Error('Refusing to sign review bytes that do not bind our jobHash + rating');
+    }
+    const signature = await this._signMessageBuilt(msgResult.message);
 
     const buyerVerusId = this.identityName
       ? (this.identityName.endsWith('@') ? this.identityName : this.identityName + '@')
@@ -1983,6 +2079,18 @@ export class J41Agent extends EventEmitter {
     changeAddress?: string;
     /** Only use UTXOs from this address (i-address or R-address) */
     sourceAddress?: string;
+    /**
+     * Trust the platform's getAgentPaymentAddress(verusId) response.
+     *
+     * Audit 2026-06-02 H2: the SDK previously took the platform's resolution
+     * verbatim — a MITM/compromised platform could substitute an attacker
+     * R-address for any VerusID and the buyer would fund the wrong address.
+     *
+     * Default: undefined → falls back to env J41_TRUST_PLATFORM_RESOLUTION
+     * (set to '1' for legacy behavior). If both are unset/false, an R-address
+     * or i-address must be supplied; VerusIDs throw with a clear message.
+     */
+    trustPlatformResolution?: boolean;
   }): Promise<string> {
     if (!this.wif) throw new Error('Agent not initialized with WIF');
     const wif = this.wif;
@@ -1992,6 +2100,16 @@ export class J41Agent extends EventEmitter {
     // Resolve VerusID to i-address if needed
     let toAddress = to;
     if (to.includes('@') || to.includes('.')) {
+      const trust = opts?.trustPlatformResolution
+        ?? (process.env.J41_TRUST_PLATFORM_RESOLUTION === '1');
+      if (!trust) {
+        throw new Error(
+          `sendCurrency refused: '${to}' is a VerusID; platform-resolved addresses ` +
+          `are not trusted by default (audit 2026-06-02 H2). Pass an R-address or ` +
+          `i-address, OR set trustPlatformResolution: true (or env ` +
+          `J41_TRUST_PLATFORM_RESOLUTION=1) to opt in to the legacy behavior.`,
+        );
+      }
       try {
         const payInfo = await this._client.getAgentPaymentAddress(to);
         toAddress = payInfo.address || to;

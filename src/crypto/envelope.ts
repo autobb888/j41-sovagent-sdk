@@ -242,7 +242,10 @@ export function openAccessEnvelope(
  */
 export async function verifyAccessEnvelope(
   envelope: AccessEnvelope,
-  client: { getAgent(verusId: string): Promise<any> },
+  client: {
+    getAgent(verusId: string): Promise<any>;
+    getIdentityKeys?(idOrName: string): Promise<{ primaryAddresses?: string[]; minimumSignatures?: number }>;
+  },
   sellerVerusId: string,
   network: 'verus' | 'verustest' = 'verustest',
   opts: AccessVerifyOptions = {},
@@ -257,19 +260,41 @@ export async function verifyAccessEnvelope(
   if (!Number.isFinite(expiresMs) || expiresMs <= now * 1000) return false;
 
   // Clock-skew guard — reject envelopes timestamped implausibly in the future.
-  // (We don't reject merely-old envelopes here; expiresAt is the validity bound,
-  // and a replayed envelope only ever decrypts for the original requester.)
   if (!Number.isFinite(envelope.timestamp) || envelope.timestamp - now > maxAge) return false;
 
-  // Resolve seller's R-address from platform
-  const agent = await client.getAgent(sellerVerusId);
-  const rAddress = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address;
-  if (!rAddress) throw new Error('Could not resolve seller R-address');
+  // Audit 2026-06-02 H3: resolve seller's R-addresses via getIdentityKeys
+  // (which honors J41_PLATFORM_SIGNER pinning per H9) instead of getAgent
+  // (untrusted). Fall back to getAgent only if the client doesn't expose
+  // getIdentityKeys (older SDK shim or test stub) — but warn loudly.
+  let primaryAddresses: string[] = [];
+  if (typeof client.getIdentityKeys === 'function') {
+    try {
+      const keys = await client.getIdentityKeys(sellerVerusId);
+      primaryAddresses = Array.isArray(keys.primaryAddresses) ? keys.primaryAddresses : [];
+    } catch {
+      primaryAddresses = [];
+    }
+  } else {
+    console.error(
+      '[verifyAccessEnvelope] WARN: client lacks getIdentityKeys; falling back to ' +
+      'getAgent which has no platform-signature pin. Upgrade the SDK client to gain ' +
+      'J41_PLATFORM_SIGNER protection.',
+    );
+    const agent = await client.getAgent(sellerVerusId);
+    const rAddr = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address;
+    if (rAddr) primaryAddresses = [rAddr];
+  }
+  if (primaryAddresses.length === 0) throw new Error('Could not resolve seller primary R-addresses');
 
   // Reconstruct the canonical string that was signed
   const canonical = `J41-ACCESS-ENVELOPE|Cipher:${envelope.ciphertext}|IV:${envelope.iv}|Tag:${envelope.authTag}|DispPub:${envelope.dispatcherEphPub}|Ts:${envelope.timestamp}|Expires:${envelope.expiresAt}`;
 
-  return verifyVerusMessage(canonical, rAddress, envelope.dispatcherSignature);
+  // Accept if signature verifies against ANY of the primary R-addresses
+  // (multi-sig identities can have multiple).
+  for (const rAddress of primaryAddresses) {
+    if (verifyVerusMessage(canonical, rAddress, envelope.dispatcherSignature)) return true;
+  }
+  return false;
 }
 
 /**
@@ -287,7 +312,10 @@ export async function verifyAccessEnvelope(
  */
 export async function verifyAccessRequest(
   request: AccessRequest,
-  client: { getAgent(verusId: string): Promise<any> },
+  client: {
+    getAgent(verusId: string): Promise<any>;
+    getIdentityKeys?(idOrName: string): Promise<{ primaryAddresses?: string[]; minimumSignatures?: number }>;
+  },
   network: 'verus' | 'verustest' = 'verustest',
   opts: AccessVerifyOptions = {},
 ): Promise<boolean> {
@@ -295,33 +323,53 @@ export async function verifyAccessRequest(
   const maxAge = opts.maxAgeSeconds ?? DEFAULT_MAX_AGE_SECONDS;
 
   // Freshness — reject stale or future-dated requests before any network I/O.
-  // Bounds the replay window even when no nonce store is supplied; a captured
-  // request can no longer be re-submitted indefinitely to re-mint API keys.
   if (!Number.isFinite(request.timestamp) || Math.abs(now - request.timestamp) > maxAge) {
     return false;
   }
 
-  // The buyer signed with their R-address (buyerVerusId IS the R-address from wifToAddress)
-  // But if J41 forwarded a resolved i-address, we need to look up the R-address
-  let rAddress = request.buyerVerusId;
-
-  // If it looks like an i-address, resolve to R-address
-  if (rAddress.startsWith('i') && rAddress.length > 30) {
-    try {
-      const agent = await client.getAgent(rAddress);
-      rAddress = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address || rAddress;
-    } catch {
-      // Can't resolve — try verification with what we have
+  // Audit 2026-06-02 H3: same fix as verifyAccessEnvelope — resolve via
+  // getIdentityKeys (with J41_PLATFORM_SIGNER pin) when the buyer ID is an
+  // i-address; only fall back to getAgent when getIdentityKeys is unavailable.
+  let candidateAddresses: string[] = [];
+  if (request.buyerVerusId.startsWith('i') && request.buyerVerusId.length > 30) {
+    if (typeof client.getIdentityKeys === 'function') {
+      try {
+        const keys = await client.getIdentityKeys(request.buyerVerusId);
+        candidateAddresses = Array.isArray(keys.primaryAddresses) ? keys.primaryAddresses : [];
+      } catch {
+        candidateAddresses = [];
+      }
+    } else {
+      console.error(
+        '[verifyAccessRequest] WARN: client lacks getIdentityKeys; falling back to ' +
+        'getAgent which has no platform-signature pin.',
+      );
+      try {
+        const agent = await client.getAgent(request.buyerVerusId);
+        const rAddr = agent.primaryAddresses?.[0] || agent.primaryaddresses?.[0] || agent.address;
+        if (rAddr) candidateAddresses = [rAddr];
+      } catch {
+        candidateAddresses = [];
+      }
     }
+    if (candidateAddresses.length === 0) candidateAddresses = [request.buyerVerusId];
+  } else {
+    candidateAddresses = [request.buyerVerusId];
   }
 
   const canonical = `J41-ACCESS-REQUEST|Buyer:${request.buyerVerusId}|Seller:${request.sellerVerusId}|EphPub:${request.ephemeralPubKey}|Nonce:${request.nonce}|Ts:${request.timestamp}`;
 
-  if (!verifyVerusMessage(canonical, rAddress, request.buyerSignature)) return false;
+  let verified = false;
+  for (const rAddress of candidateAddresses) {
+    if (verifyVerusMessage(canonical, rAddress, request.buyerSignature)) {
+      verified = true;
+      break;
+    }
+  }
+  if (!verified) return false;
 
   // Replay — consult the caller's seen-nonce store only for validly-signed
-  // requests (so attackers can't burn nonces with junk). The dispatcher passes
-  // a check-and-record hook backed by its nonce-cache.
+  // requests (so attackers can't burn nonces with junk).
   if (opts.isReplay && (await opts.isReplay(request.nonce))) return false;
 
   return true;

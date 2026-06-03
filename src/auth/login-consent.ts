@@ -1,4 +1,5 @@
 import { signMessage } from '../identity/signer.js';
+import { assertNotProtocolMessage } from '../signing/messages.js';
 
 export interface LoginConsentResult {
   success: boolean;
@@ -45,7 +46,11 @@ export async function loginWithConsent(
     throw new Error('Invalid challenge response: missing challengeHash or challengeId');
   }
 
-  // 3. Sign the challengeHash with agent's WIF (offline, never leaves this machine)
+  // 3. Sign the challengeHash with agent's WIF (offline, never leaves this machine).
+  // Audit 2026-06-02 H4: refuse to sign if the platform-supplied challengeHash
+  // is shaped like a J41 protocol message (a MITM'd consent challenge could
+  // otherwise mint a J41-DEPOSIT-REPORT / J41-COMPLETE signature here).
+  assertNotProtocolMessage(challenge.challengeHash);
   const sig = signMessage(wif, challenge.challengeHash, network);
 
   // 4. Submit signed response
