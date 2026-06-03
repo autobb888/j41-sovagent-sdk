@@ -2179,11 +2179,23 @@ export class J41Agent extends EventEmitter {
 
     // Mark inputs spent BEFORE broadcast so a following send can't reselect them.
     for (const spent of built.spentUtxos) this._spentUtxos.add(`${spent.txid}:${spent.vout}`);
+    // Audit L-SDK-ddos-1: evict oldest entries when cap exceeded.
+    while (this._spentUtxos.size > J41Agent.MAX_SPENT_UTXOS) {
+      const oldest = this._spentUtxos.values().next().value;
+      if (oldest === undefined) break;
+      this._spentUtxos.delete(oldest);
+    }
 
     const result = await this._client.broadcast(built.rawhex);
     const txid = typeof result === 'string' ? result : result.txid || JSON.stringify(result);
     // Chain the change UTXO for the next send (uses the real broadcast txid).
-    if (built.changeUtxo) { built.changeUtxo.txid = txid; this._pendingChange.push(built.changeUtxo); }
+    if (built.changeUtxo) {
+      built.changeUtxo.txid = txid;
+      this._pendingChange.push(built.changeUtxo);
+      while (this._pendingChange.length > J41Agent.MAX_PENDING_CHANGE) {
+        this._pendingChange.shift();
+      }
+    }
 
     this.emit('payment:sent', { txid, to: toAddress, amount });
     return txid;
@@ -2195,6 +2207,16 @@ export class J41Agent extends EventEmitter {
    * @returns txid
    */
   // Track spent UTXOs and unconfirmed change for UTXO chaining (multiple TXs per block)
+  // Audit 2026-06-02 L-SDK-ddos-1: both sets grow until stop() — long-running
+  // operators bleed memory. Bound them and evict insertion-order oldest when
+  // cap is exceeded. Set iteration order is insertion-order in JS so this
+  // works as a cheap LRU; the trade-off is that a UTXO chained > N sends ago
+  // can be re-selected, but the per-tx serializeSend() + apiUtxos.filter()
+  // already prevent same-block double-spend, so the only consequence is
+  // re-confirming an already-spent UTXO at apiUtxos time (which apiUtxos
+  // strips before we get here).
+  private static readonly MAX_SPENT_UTXOS = 10_000;
+  private static readonly MAX_PENDING_CHANGE = 1_000;
   private _spentUtxos: Set<string> = new Set(); // "txid:vout" keys
   private _pendingChange: any[] = []; // unconfirmed change UTXOs from our own TXs
   private _txChain: Promise<unknown> = Promise.resolve(); // serializes sends

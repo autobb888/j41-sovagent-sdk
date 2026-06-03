@@ -159,9 +159,17 @@ export function createLocalSigner(wif: string, network: 'verus' | 'verustest' = 
           );
         }
         case 'deliver': {
-          // We CAN'T build the real deliver message without jobHash either,
-          // but for the convenience of tests that pass a synthetic jobId we
-          // build a clearly-non-prod message form bound to the inputs.
+          // Audit 2026-06-02 L-SDK-auth-2: jobId-as-jobHash is a deliberate
+          // test-only fallback (real production paths use the dispatcher's
+          // RemoteSigner which fetches the authoritative jobHash). Gate this
+          // path behind J41_LOCAL_SIGNER_TEST_MODE=1 so a production agent
+          // accidentally falling through to createLocalSigner never silently
+          // signs a malformed deliver message.
+          if (process.env.J41_LOCAL_SIGNER_TEST_MODE !== '1') {
+            throw new Error(
+              'createLocalSigner: signBrokered({type:"deliver"}) requires the authoritative jobHash. Use a dispatcher-backed RemoteSigner in production, or set J41_LOCAL_SIGNER_TEST_MODE=1 for test-only synthetic-jobId paths.',
+            );
+          }
           message = messages.buildDeliverMessage({
             jobHash: req.jobId,
             deliveryHash: req.deliveryHash,
@@ -170,6 +178,11 @@ export function createLocalSigner(wif: string, network: 'verus' | 'verustest' = 
           break;
         }
         case 'dispute_respond': {
+          if (process.env.J41_LOCAL_SIGNER_TEST_MODE !== '1') {
+            throw new Error(
+              'createLocalSigner: signBrokered({type:"dispute_respond"}) requires the authoritative jobHash. Use a dispatcher-backed RemoteSigner in production, or set J41_LOCAL_SIGNER_TEST_MODE=1.',
+            );
+          }
           message = messages.buildDisputeRespondMessage({
             jobHash: req.jobId,
             action: req.action,

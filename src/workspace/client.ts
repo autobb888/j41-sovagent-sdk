@@ -38,6 +38,11 @@ const MAX_RESULT_SIZE = 10 * 1024 * 1024; // 10MB per item
 const MAX_RESULT_AGGREGATE = Number(process.env.J41_WORKSPACE_MAX_RESULT_AGGREGATE ?? 40 * 1024 * 1024); // 40MB total
 const MAX_RESULT_ITEMS = Number(process.env.J41_WORKSPACE_MAX_RESULT_ITEMS ?? 1024);
 
+// Audit 2026-06-02 L-SDK-ddos-2: workspace reconnect cycles cap. Same pattern
+// as chat/client.ts (MAX_RECONNECT_CYCLES=3) — without this, a hostile relay
+// can drive infinite reconnect attempts and pin client CPU/network.
+const MAX_RECONNECT_CYCLES = Number(process.env.J41_WORKSPACE_MAX_RECONNECT_CYCLES ?? 3);
+
 interface McpResultContent {
   type: string;
   text: string;
@@ -155,6 +160,7 @@ export class WorkspaceClient {
   private _connected = false;
   private _jobId: string | null = null;
   private _excludedFiles: string[] = [];
+  private _reconnectCycles = 0;
   private _stats = {
     filesRead: 0,
     filesWritten: 0,
@@ -245,8 +251,21 @@ export class WorkspaceClient {
 
       this.socket.on('connect', () => {
         this._connected = true;
+        this._reconnectCycles = 0;
         this._stats.connectedAt = Date.now();
         // Don't resolve yet — wait for workspace to be active
+      });
+
+      this.socket.on('reconnect_attempt', () => {
+        this._reconnectCycles++;
+        if (this._reconnectCycles > MAX_RECONNECT_CYCLES) {
+          // Audit L-SDK-ddos-2: hard-stop further reconnect attempts after
+          // MAX_RECONNECT_CYCLES so a hostile relay can't drive infinite
+          // reconnect loops. Disconnect explicitly; `disconnectHandler` is
+          // fired by the disconnect event.
+          console.warn(`[WorkspaceClient] Exceeded ${MAX_RECONNECT_CYCLES} reconnect cycles — giving up`);
+          this.socket?.disconnect();
+        }
       });
 
       this.socket.on('connect_error', (err) => {

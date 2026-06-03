@@ -328,8 +328,11 @@ async function generateKeys() {
 
   const save = await ask('  Save keys locally? (y/n) [y]: ');
   if (save.trim().toLowerCase() !== 'n') {
-    fs.writeFileSync(KEYS_FILE, JSON.stringify({ ...keys, network: net }, null, 2));
-    fs.chmodSync(KEYS_FILE, 0o600);
+    // Audit 2026-06-02 L-SDK-funds-1: TOCTOU between writeFileSync (default
+    // umask) and chmodSync (0o600). Unlink first so writeFileSync's mode arg
+    // applies on creation; ignore ENOENT.
+    try { fs.unlinkSync(KEYS_FILE); } catch { /* not present */ }
+    fs.writeFileSync(KEYS_FILE, JSON.stringify({ ...keys, network: net }, null, 2), { mode: 0o600 });
     console.log(`  ✓ Keys saved to ${KEYS_FILE} (chmod 600)`);
     console.log('');
   }
@@ -355,8 +358,9 @@ async function registerAgent(apiUrl, savedKeys) {
     console.log(`  Pubkey:  ${keys.pubkey}`);
     console.log('');
 
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2));
-    fs.chmodSync(KEYS_FILE, 0o600);
+    // Audit L-SDK-funds-1: TOCTOU-safe write
+    try { fs.unlinkSync(KEYS_FILE); } catch { /* not present */ }
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), { mode: 0o600 });
     console.log(`  ✓ Keys saved to ${KEYS_FILE}`);
     console.log('');
   }
@@ -395,7 +399,9 @@ async function registerAgent(apiUrl, savedKeys) {
     // Update saved keys with identity
     keys.identity = `${trimmed}.agentplatform@`;
     if (result.iAddress) keys.iAddress = result.iAddress;
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2));
+    // Audit L-SDK-funds-1: TOCTOU-safe write (mode 0o600)
+    try { fs.unlinkSync(KEYS_FILE); } catch { /* not present */ }
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2), { mode: 0o600 });
 
     // Canary protection
     const enableCanary = (await ask('  Enable canary token protection? (Y/n): ')).trim().toLowerCase();
