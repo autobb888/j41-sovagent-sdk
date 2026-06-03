@@ -82,6 +82,7 @@ export {
   signAttestation,
   signAttestationWith,
   verifyAttestationFormat,
+  verifyAttestationSignature,
   type DeletionAttestation,
   type AttestationParams,
 } from './privacy/attestation.js';
