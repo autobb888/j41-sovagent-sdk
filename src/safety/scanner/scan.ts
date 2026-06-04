@@ -15,7 +15,12 @@ import { regexScan } from './regex.js';
 import { indirectInjectionScan } from './indirect.js';
 import { perplexityScan } from './perplexity.js';
 
-const MAX_INPUT = 100_000;
+// Bypass-proof bound. The old 100KB cap silently truncated-and-passed: an
+// attacker padded an injection past 100KB and the unscanned tail read as "safe".
+// This SDK has no worker pool (it runs in-process in the job-agent), so we bound
+// synchronous work at a high ceiling — but never silently truncate-and-pass:
+// input above the ceiling is forced non-safe so scanContext contains it.
+const HARD_MAX_INPUT = 1_000_000; // 1MB (~0.8s worst-case sync scan)
 
 /**
  * Run one detection layer, swallowing any exception and degrading to a
@@ -43,8 +48,9 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   const blockThreshold = config.blockThreshold ?? 0.7;
   const suspiciousThreshold = config.suspiciousThreshold ?? 0.3;
 
-  // Cap input length to bound regex/perplexity work on huge inputs.
-  const input = text.length > MAX_INPUT ? text.slice(0, MAX_INPUT) : text;
+  // Scan up to the ceiling; remember if anything was left unscanned.
+  const truncated = text.length > HARD_MAX_INPUT;
+  const input = truncated ? text.slice(0, HARD_MAX_INPUT) : text;
 
   const layers: LayerResult[] = [];
   layers.push(runLayer('regex', () => regexScan(input)));
@@ -54,8 +60,15 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   }
 
   // Model-less: combined score is the max across the available layers.
-  const score = Math.min(layers.reduce((max, l) => Math.max(max, l.score), 0), 1.0);
-  const flags = layers.flatMap(l => l.flags).filter(f => !f.endsWith('_unavailable'));
+  let score = Math.min(layers.reduce((max, l) => Math.max(max, l.score), 0), 1.0);
+  let flags = layers.flatMap(l => l.flags).filter(f => !f.endsWith('_unavailable'));
+
+  if (truncated) {
+    // The tail couldn't be scanned — never let it read as "safe". Force at least
+    // "suspicious" so scanContext contains it (strip → quarantine for untrusted).
+    score = Math.max(score, suspiciousThreshold);
+    flags = [...flags, 'oversized_unscanned_input'];
+  }
 
   const classification: Classification =
     score >= blockThreshold ? 'likely_injection'
