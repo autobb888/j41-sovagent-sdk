@@ -23,6 +23,10 @@ function charEntropy(text: string): number {
   return entropy;
 }
 
+// Letters/marks/numbers in ANY script (Cyrillic, CJK, Arabic, Latin-extended, …) are
+// normal word characters, not "special". Hoisted so the per-char test doesn't recompile.
+const WORD_CHAR_RE = /[\p{L}\p{M}\p{N}]/u;
+
 /**
  * Check for unusual character distributions that indicate adversarial input.
  */
@@ -51,7 +55,10 @@ function analyzeDistribution(text: string): {
     }
     const cc = c.charCodeAt(0);
     if ((cc >= 65 && cc <= 90) || (cc >= 97 && cc <= 122)) scripts.add('latin');
-    const isAlnum = (cc >= 48 && cc <= 57) || (cc >= 65 && cc <= 90) || (cc >= 97 && cc <= 122);
+    // Any-script letter/mark/number counts as a normal word char. Previously only ASCII
+    // alphanumerics did, so every Cyrillic/CJK/Arabic letter was tallied as a "special
+    // char" — a benign Russian sentence then read as ~100% special and false-flagged.
+    const isAlnum = WORD_CHAR_RE.test(c);
     const isCommon = isAlnum || cc === 32 || cc === 9 || cc === 10 || cc === 13
       || cc === 46 || cc === 44 || cc === 33 || cc === 63 || cc === 59 || cc === 58
       || cc === 39 || cc === 34 || cc === 40 || cc === 41 || cc === 45;

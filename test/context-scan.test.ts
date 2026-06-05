@@ -88,6 +88,33 @@ describe('scanContext trusted-source short-circuit (review fix 3)', () => {
   });
 });
 
+describe('perplexity treats non-Latin letters as normal text (Cyrillic FP fix)', () => {
+  it('does not flag a benign Russian sentence as high-special-char gibberish', async () => {
+    const { perplexityScan } = await import('../src/safety/scanner/perplexity.js');
+    // Pure Cyrillic benign sentence — every letter used to be counted as a "special
+    // char" (ASCII-only isAlnum), so it read as ~100% special and false-flagged.
+    const benignRu = 'Отчёт за квартал показывает стабильный рост выручки и прибыли компании.';
+    const res = perplexityScan(benignRu);
+    assert.ok(!res.flags.includes('high_special_chars'), `unexpected high_special_chars: ${JSON.stringify(res.flags)}`);
+    assert.ok(!res.flags.includes('consecutive_special_chars'), `unexpected consecutive_special_chars: ${JSON.stringify(res.flags)}`);
+    assert.ok(res.score < 0.3, `benign Russian should score low, got ${res.score}`);
+  });
+
+  it('allows a benign Russian untrusted message unchanged via scanContext', async () => {
+    const benignRu = 'Сборка завершилась успешно за 4.2 секунды. Все тесты пройдены.';
+    const res = await scanContext(benignRu, { source: 'mcp_result' });
+    assert.equal(res.action, 'allow');
+    assert.equal(res.flagged, false);
+  });
+
+  it('still flags genuine symbol gibberish (the fix did not blunt special-char detection)', async () => {
+    const { perplexityScan } = await import('../src/safety/scanner/perplexity.js');
+    const gibberish = '$$$ @@@ %%% ^^^ &&& *** ((( ))) +++ === ~~~ ||| <<< >>> {{{ }}}';
+    const res = perplexityScan(gibberish);
+    assert.ok(res.flags.includes('high_special_chars'), 'true symbol gibberish must still flag');
+  });
+});
+
 describe('scan() per-layer error isolation (review fix 1)', () => {
   it('returns a usable ScanResult when a single layer throws', async () => {
     // Import internals directly to inject a throwing layer fixture.
