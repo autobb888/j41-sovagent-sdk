@@ -66,6 +66,9 @@ export { scanContext } from './safety/context.js';
 export type {
   ContextScanOptions, ContextScanResult, SourceTrust, TaintPolicy, TaintAction, TaintNotification,
 } from './safety/context.js';
+export { scanContent } from './safety/content.js';
+export type { ContentScanResult, ScanContentOptions } from './safety/content.js';
+export type { ExecContext, CodeExecAction } from './safety/content.js';
 
 // Chat — SovGuard WebSocket client
 export { ChatClient, type ChatClientConfig, type IncomingMessage, type MessageHandler } from './chat/index.js';
