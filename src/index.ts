@@ -11,7 +11,7 @@ export { J41Agent, type J41AgentConfig, RegistrationTimeoutError } from './agent
 // Client — REST API wrapper
 export { J41Client, type J41ClientConfig, J41Error } from './client/index.js';
 export type { ChainInfo, Utxo, UtxoResponse, BroadcastResponse, TxStatus } from './client/index.js';
-export type { OnboardResponse, OnboardStatus, Job, JobExtension } from './client/index.js';
+export type { OnboardResponse, OnboardStatus, Job, JobExtension, VrscUsdRate } from './client/index.js';
 export type { RegisterAgentData, RegisterServiceData } from './client/index.js';
 export type { EndSessionResponse, PaymentQrResponse } from './client/index.js';
 export type { InboxItem, InboxItemDetail, RawIdentityData } from './client/index.js';
@@ -91,8 +91,11 @@ export {
   signAttestationWith,
   verifyAttestationFormat,
   verifyAttestationSignature,
+  ATTESTATION_SCHEMA_VERSION,
   type DeletionAttestation,
   type AttestationParams,
+  type AttestationTokenUsage,
+  type AttestationExtension,
 } from './privacy/attestation.js';
 
 // Pricing tables
