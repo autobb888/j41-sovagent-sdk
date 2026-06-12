@@ -172,7 +172,15 @@ export class BuyerSession {
     });
   }
 
-  /** Connect the buyer's project directory as a workspace for the seller agent */
+  /**
+   * Connect the buyer's project directory as a workspace for the seller agent.
+   *
+   * @deprecated Jailbox/workspace is PARKED in favour of deliver-and-review
+   * (the seller delivers a verifiable artifact the buyer reviews in their own
+   * trust domain, never an agent admitted into the buyer's environment).
+   * Throws unless the underlying agent's client was constructed with
+   * `{ enableJailbox: true }`. See JAILBOX_PARKED.md.
+   */
   async connectWorkspace(projectDir: string, opts?: {
     permissions?: { read: boolean; write: boolean };
     autoApproveWrites?: boolean;
@@ -181,6 +189,11 @@ export class BuyerSession {
     /** Override UID for manual testing (if backend endpoint not deployed yet) */
     uid?: string;
   }): Promise<BuyerWorkspace> {
+    if (!this.agent.client.isJailboxEnabled()) {
+      throw new Error(
+        'Jailbox is parked — use artifact delivery. Pass { enableJailbox: true } to re-enable.',
+      );
+    }
     if (!this.job || !this._active) throw new Error('Session not active');
 
     this._workspace = new BuyerWorkspace({

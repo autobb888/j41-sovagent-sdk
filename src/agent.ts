@@ -95,6 +95,16 @@ export interface J41AgentConfig {
    * See `RemoteSigner` for the contract.
    */
   signer?: RemoteSigner;
+  /**
+   * Opt-in flag for the PARKED jailbox/workspace surface (the "agent works
+   * inside the buyer's environment" sandbox). Default `false`.
+   *
+   * Jailbox is parked in favour of deliver-and-review. When `false` (the
+   * default) the agent-side `workspace` relay accessor throws. Set to `true`
+   * only for the rare scoped-access flow that still needs the relay.
+   * See JAILBOX_PARKED.md.
+   */
+  enableJailbox?: boolean;
 }
 
 export class J41Agent extends EventEmitter {
@@ -132,7 +142,7 @@ export class J41Agent extends EventEmitter {
       }
     }
     this.apiUrl = config.apiUrl;
-    this._client = new J41Client({ apiUrl: config.apiUrl });
+    this._client = new J41Client({ apiUrl: config.apiUrl, enableJailbox: config.enableJailbox === true });
     // Wire auto re-auth: on 401/403, J41Client calls login() to refresh session (S2)
     this._client.setOnSessionExpired(async () => {
       console.log('[J41] Session expired, re-authenticating...');
@@ -285,8 +295,21 @@ export class J41Agent extends EventEmitter {
     return this._client;
   }
 
-  /** Lazy workspace client — created on first access */
+  /**
+   * Lazy workspace client — created on first access.
+   *
+   * @deprecated Jailbox/workspace is PARKED in favour of deliver-and-review
+   * (the agent delivers a verifiable artifact the buyer reviews in their own
+   * trust domain, never an agent admitted into the buyer's environment).
+   * Throws unless the agent was constructed with `{ enableJailbox: true }`.
+   * See JAILBOX_PARKED.md.
+   */
   get workspace(): WorkspaceClient {
+    if (!this._client.isJailboxEnabled()) {
+      throw new Error(
+        'Jailbox is parked — use artifact delivery. Pass { enableJailbox: true } to re-enable.',
+      );
+    }
     if (!this._workspace) {
       this._workspace = new WorkspaceClient({
         apiUrl: this._client.getBaseUrl(),

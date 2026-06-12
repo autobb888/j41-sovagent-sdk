@@ -23,6 +23,20 @@ export interface J41ClientConfig {
   maxRetries?: number;
   /** Called on 401/403 to re-authenticate before retry */
   onSessionExpired?: () => Promise<void>;
+  /**
+   * Opt-in flag for the PARKED jailbox/workspace surface (the "agent works
+   * inside the buyer's environment" sandbox). Default `false`.
+   *
+   * Jailbox is parked in favour of deliver-and-review: the seller delivers a
+   * verifiable artifact the buyer reviews in their own trust domain, never an
+   * agent admitted into the buyer's environment. See JAILBOX_PARKED.md and the
+   * VDXF v2 schema design (§3b "jailbox.* PARKED").
+   *
+   * When `false` (the default) every jailbox/workspace method throws a clear
+   * error. Set to `true` only for the rare scoped-access flow that still needs
+   * the relay; doing so restores the original behaviour unchanged.
+   */
+  enableJailbox?: boolean;
 }
 
 export class J41Client {
@@ -31,6 +45,7 @@ export class J41Client {
   private timeout: number;
   private maxRetries: number;
   private onSessionExpired: (() => Promise<void>) | null;
+  private readonly jailboxEnabled: boolean;
 
   constructor(config: J41ClientConfig) {
     this.baseUrl = config.apiUrl.replace(/\/+$/, '');
@@ -38,6 +53,29 @@ export class J41Client {
     this.timeout = config.timeout || 30_000;
     this.maxRetries = config.maxRetries ?? 3;
     this.onSessionExpired = config.onSessionExpired || null;
+    this.jailboxEnabled = config.enableJailbox === true;
+  }
+
+  /**
+   * Whether the PARKED jailbox/workspace surface is opted-in for this client.
+   * Buyer-session / agent relay entry points consult this before connecting.
+   * @see J41ClientConfig.enableJailbox
+   */
+  isJailboxEnabled(): boolean {
+    return this.jailboxEnabled;
+  }
+
+  /**
+   * Throw the canonical "jailbox is parked" error unless the surface was
+   * explicitly opted-in via `{ enableJailbox: true }`. Called by every
+   * jailbox/workspace entry point.
+   */
+  private assertJailboxEnabled(): void {
+    if (!this.jailboxEnabled) {
+      throw new Error(
+        'Jailbox is parked — use artifact delivery. Pass { enableJailbox: true } to re-enable.',
+      );
+    }
   }
 
   /** Set the re-auth callback (used by J41Agent to wire login()) */
@@ -1462,8 +1500,16 @@ export class J41Client {
     return res.data;
   }
 
-  /** Get workspace session status for a job */
+  /**
+   * Get workspace session status for a job.
+   *
+   * @deprecated Jailbox/workspace is PARKED in favour of deliver-and-review
+   * (the seller delivers a verifiable artifact the buyer reviews in their own
+   * trust domain). Throws unless the client was constructed with
+   * `{ enableJailbox: true }`. See JAILBOX_PARKED.md.
+   */
   async getWorkspaceStatus(jobId: string): Promise<WorkspaceStatus> {
+    this.assertJailboxEnabled();
     const res = await this.request<{ data: WorkspaceStatus }>('GET', `/v1/jailbox/${jobId}`);
     return res.data;
   }
@@ -1472,8 +1518,14 @@ export class J41Client {
    * Create a buyer workspace session for a job. Returns the workspace UID.
    * Uses POST /v1/jailbox/{jobId}/token (same endpoint the dashboard uses).
    * Returns 409 if workspace already exists for this job.
+   *
+   * @deprecated Jailbox/workspace is PARKED in favour of deliver-and-review
+   * (the seller delivers a verifiable artifact the buyer reviews in their own
+   * trust domain). Throws unless the client was constructed with
+   * `{ enableJailbox: true }`. See JAILBOX_PARKED.md.
    */
   async initBuyerWorkspace(jobId: string): Promise<WorkspaceTokenResponse> {
+    this.assertJailboxEnabled();
     const res = await this.request<{ data: WorkspaceTokenResponse }>(
       'POST', `/v1/jailbox/${encodeURIComponent(jobId)}/token`
     );
