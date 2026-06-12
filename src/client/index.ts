@@ -774,9 +774,18 @@ export class J41Client {
   // Job Extension endpoints
   // ------------------------------------------
 
-  /** Request a session extension (additional payment for more work) */
-  async requestExtension(jobId: string, amount: number, reason?: string): Promise<JobExtension> {
-    const res = await this.request<{ data: JobExtension }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/extensions`, { amount, reason });
+  /**
+   * Request a session extension (additional payment for more work).
+   *
+   * `estimatedTokens` (WP-D4) is the token count the extension was priced for;
+   * when supplied the platform persists it on the extension record and echoes
+   * it on the approval webhook, so the seller grants exactly the approved
+   * amount even across a restart. Optional and backward-compatible.
+   */
+  async requestExtension(jobId: string, amount: number, reason?: string, estimatedTokens?: number): Promise<JobExtension> {
+    const body: { amount: number; reason?: string; estimatedTokens?: number } = { amount, reason };
+    if (estimatedTokens != null) body.estimatedTokens = estimatedTokens;
+    const res = await this.request<{ data: JobExtension }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/extensions`, body);
     return res.data;
   }
 
@@ -861,6 +870,17 @@ export class J41Client {
   /** Get pricing models list */
   async getPricingModels(): Promise<Record<string, unknown>> {
     const res = await this.request<{ data: Record<string, unknown> }>('GET', '/v1/pricing/models');
+    return res.data;
+  }
+
+  /**
+   * Current VRSC→USD exchange rate (WP-D4 #3). Job payments are in VRSC and
+   * LLM costs are in USD; a dispatcher polls this to derive token budgets and
+   * price extensions. `usdPerVrsc` is the USD value of 1 VRSC; `asOf` lets the
+   * caller fail closed on staleness; `ttlSeconds` is the suggested cache life.
+   */
+  async getVrscUsdRate(): Promise<VrscUsdRate> {
+    const res = await this.request<{ data: VrscUsdRate }>('GET', '/v1/pricing/vrsc-rate');
     return res.data;
   }
 
@@ -2065,10 +2085,19 @@ export interface JobExtension {
   requester: string;
   amount: number;
   reason?: string;
+  estimatedTokens?: number;   // WP-D4: token count this extension was priced for
   status: 'pending' | 'approved' | 'paid' | 'rejected';
   agentTxid?: string;
   feeTxid?: string;
   createdAt: string;
+}
+
+/** Platform-provided VRSC→USD exchange rate (WP-D4 #3). */
+export interface VrscUsdRate {
+  usdPerVrsc: number;   // USD value of 1 VRSC
+  asOf: string;         // ISO-8601 timestamp the rate was sampled
+  source?: string;      // e.g. 'coingecko' | 'internal-oracle' | 'manual'
+  ttlSeconds?: number;  // suggested cache lifetime before re-fetch
 }
 
 export interface ChatMessage {
