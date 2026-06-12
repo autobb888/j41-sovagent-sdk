@@ -201,6 +201,21 @@ export {
 export { BuyerSession, type BuyerSessionConfig } from './buyer/session.js';
 export { BuyerWorkspace, type BuyerWorkspaceConfig, type BuyerWorkspaceStats } from './buyer/workspace.js';
 
+// Credit watcher — buyer-side auto-top-up for the sovcompute prepaid proxy
+export {
+  CreditWatcher,
+  type CreditWatcherConfig,
+  type CreditWatcherSeller,
+  type CreditWatcherPolicy,
+  type CreditWatcherDeps,
+  type CreditLowEvent,
+  type DepositReport,
+  type CreditWatcherAlert,
+  type CreditWatcherStatus,
+  type TopUpAction,
+  type TopUpResult,
+} from './buyer/credit-watcher.js';
+
 // Crypto — ECDH key envelope for API proxy
 export {
   generateEphemeralKeypair,
