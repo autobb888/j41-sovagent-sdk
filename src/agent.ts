@@ -217,6 +217,19 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
+   * Native chain currency for this agent's configured network.
+   *
+   * Audit M6: money paths used to default `currency` to the literal
+   * 'VRSCTEST', and that testnet default flowed into SIGNED artifacts (e.g. the
+   * post-bounty commitment). A mainnet agent that omitted `currency` would then
+   * sign a wrong-currency commitment. Derive the default from the agent's own
+   * network instead so a mainnet agent always commits to 'VRSC'.
+   */
+  private get defaultCurrency(): 'VRSC' | 'VRSCTEST' {
+    return this.networkType === 'verus' ? 'VRSC' : 'VRSCTEST';
+  }
+
+  /**
    * Sign a structured broker-gated request (accept, deliver, dispute_respond).
    * Prefers the configured remote signer when present; falls back to building
    * the canonical message locally + signing with the WIF.
@@ -1885,7 +1898,10 @@ export class J41Agent extends EventEmitter {
   }): Promise<{ id: string; status: string }> {
     if (!this.wif && !this.signer) throw new Error('Agent not initialized with WIF or remote signer');
 
-    const currency = data.currency || 'VRSCTEST';
+    // Audit M6: derive the default currency from the agent's network rather
+    // than a hardcoded testnet literal — this currency is SIGNED into the
+    // bounty-funding commitment below, so a mainnet agent must commit to VRSC.
+    const currency = data.currency || this.defaultCurrency;
     const timestamp = Math.floor(Date.now() / 1000);
     const msg = buildPostBountyMessage(data.title, data.amount, currency, timestamp);
     const signature = await this._signMessageBuilt(msg);
@@ -2013,7 +2029,10 @@ export class J41Agent extends EventEmitter {
 
     const job = await this._client.createJob({
       ...data,
-      currency: data.currency || 'VRSCTEST',
+      // Audit M6: derive default job currency from the agent's network so a
+      // mainnet agent that omits `currency` doesn't create a VRSCTEST job
+      // (which drives the on-chain settlement currency).
+      currency: data.currency || this.defaultCurrency,
       timestamp,
       signature,
     });

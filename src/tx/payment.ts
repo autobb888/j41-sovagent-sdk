@@ -26,6 +26,15 @@ export interface PaymentParams {
   utxos: Utxo[];
   fee?: number;          // Fee in satoshis (default 10000)
   changeAddress?: string;
+  /**
+   * Chain to build for. Audit M6: this network selects the address version
+   * bytes baked into the (un-signed) transaction script — omitting it on a
+   * mainnet wallet builds an un-broadcastable testnet transaction. It defaults
+   * to 'verustest' for backward compatibility of this standalone util, but
+   * `J41Agent` ALWAYS passes its own configured network, so an agent-driven
+   * payment never silently falls back to testnet. Direct callers on mainnet
+   * MUST pass network: 'verus'.
+   */
   network?: 'verus' | 'verustest';
 }
 
@@ -205,6 +214,7 @@ export interface MultiPaymentParams {
   utxos: Utxo[];
   fee?: number;          // Fee in satoshis (default 10000)
   changeAddress?: string;
+  /** See PaymentParams.network (audit M6) — defaults to 'verustest'; J41Agent always passes its own network. */
   network?: 'verus' | 'verustest';
 }
 
@@ -302,6 +312,12 @@ export function buildMultiPayment(params: MultiPaymentParams & { returnDetails?:
   };
 }
 
+// Audit M6: `networkName` defaults to 'verustest' for backward compatibility of
+// these standalone utils. `J41Agent` always passes `this.networkType`, so an
+// agent-driven derivation never silently uses testnet. Mainnet R-addresses
+// happen to share the testnet pubkeyhash version, so the derived address is the
+// same either way — but direct callers should still pass the correct network so
+// any future version-sensitive logic stays correct.
 export function wifToAddress(wif: string, networkName: 'verus' | 'verustest' = 'verustest'): string {
   return keypairFromWIF(wif, networkName).address;
 }
