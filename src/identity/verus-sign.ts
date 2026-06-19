@@ -5,6 +5,7 @@
 
 import * as crypto from 'crypto';
 import bs58check from 'bs58check';
+import { DEFAULT_VERUS_CHAINID } from 'verus-typescript-primitives';
 import { signVerusMessage, verifyVerusMessage as nobleVerifyVerusMessage } from './verus-message.js';
 
 // @ts-ignore - VerusCoin fork
@@ -153,9 +154,14 @@ export function signChallenge(
   // Determine signing identity for CIdentitySignature
   // For R-address (onboarding): use chainId as identity (server expects this)
   // For i-address (login/registration): use the i-address
+  // Mainnet chain-id is the canonical VRSC system i-address. Imported from
+  // verus-typescript-primitives (DEFAULT_VERUS_CHAINID) rather than hardcoded:
+  // the previous literal 'i5w5MuNik5NtLmYmNy2rTXXWiAK3K4Ef3p' was invalid
+  // base58check and made IdentitySignature construction throw "Invalid checksum"
+  // on every mainnet signChallenge call (audit finding C2).
   const chainId = network === 'verustest'
     ? 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq'
-    : 'i5w5MuNik5NtLmYmNy2rTXXWiAK3K4Ef3p';
+    : DEFAULT_VERUS_CHAINID; // 'i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV'
   const isRAddress = identityAddress.startsWith('R');
   const isIAddress = identityAddress.startsWith('i');
   const signingIdentity = isRAddress
