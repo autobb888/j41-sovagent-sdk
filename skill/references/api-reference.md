@@ -124,8 +124,8 @@ REST client for all J41 API endpoints.
 
 | Method | Auth | Description |
 |--------|------|-------------|
-| `getChallenge()` | No | Get auth challenge for signing |
-| `login(challengeId, verusId, signature)` | No | Login with signed challenge, returns session cookie |
+| `getConsentChallenge()` | No | Get login-consent challenge (returns `challengeHash`) |
+| `verifyConsent(challengeId, verusId, signature)` | No | Submit signed `challengeHash`, returns session cookie |
 | `getSession()` | Cookie | Check current session |
 | `logout()` | Cookie | End session |
 
@@ -189,13 +189,12 @@ REST client for all J41 API endpoints.
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/auth/challenge` | No | Get login challenge |
-| POST | `/auth/login` | No | `{ challengeId, verusId, signature }` → session cookie |
+| GET | `/auth/consent/challenge` | No | Get login-consent challenge (returns `challengeHash`) |
+| POST | `/auth/consent/verify` | No | `{ challengeId, verusId, signature }` (sign `challengeHash`) → session cookie |
+| POST | `/auth/consent/callback` | No | Wallet webhook (Verus Mobile/Desktop posts the signed LoginConsentResponse) |
+| GET | `/auth/consent/status/:id` | No | Poll login-consent status (browser) |
 | GET | `/auth/session` | Cookie | Check session |
 | POST | `/auth/logout` | Cookie | End session |
-| GET | `/auth/qr/challenge` | No | VerusID Mobile QR login |
-| POST | `/auth/qr/callback` | No | Mobile login callback |
-| GET | `/auth/qr/status/:id` | No | Poll QR login status |
 
 ### Agent Registration (Signed Payload)
 

@@ -28,9 +28,9 @@ const IDENTITY = 'myagent.agentplatform@';
 const I_ADDRESS = 'iXXX...'; // Compute with nameToIAddress() or look up
 
 // 1. Login
-const { data: ch } = await (await fetch(`${API}/auth/challenge`)).json();
-const sig = signChallenge(WIF, ch.challenge, I_ADDRESS, 'verustest');
-const loginRes = await fetch(`${API}/auth/login`, {
+const { data: ch } = await (await fetch(`${API}/auth/consent/challenge`)).json();
+const sig = signChallenge(WIF, ch.challengeHash, I_ADDRESS, 'verustest');
+const loginRes = await fetch(`${API}/auth/consent/verify`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ challengeId: ch.challengeId, verusId: IDENTITY, signature: sig }),
@@ -125,10 +125,12 @@ const kp2 = keypairFromWIF('UwifKey...', 'verustest');
 
 ### Authentication Flow
 
-1. `GET /auth/challenge` → get challenge text + challengeId
-2. `signChallenge(wif, challenge, iAddress)` → CIdentitySignature
-3. `POST /auth/login { challengeId, verusId, signature }` → session cookie
+1. `GET /auth/consent/challenge` → returns `{ challengeId, challengeHash, expiresAt, ... }` (sign the `challengeHash`, a 64-char hex string)
+2. `signChallenge(wif, challengeHash, iAddress)` → CIdentitySignature
+3. `POST /auth/consent/verify { challengeId, verusId, signature }` → sets `verus_session` cookie, returns `{ success, identityAddress, identityName, sessionToken, expiresAt }`
 4. Use cookie for service management endpoints
+
+In practice, `agent.authenticate()` / `client.authenticateWithWIF()` handle this flow automatically.
 
 ### Agent Registration (Signed Payload)
 
