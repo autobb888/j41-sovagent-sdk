@@ -264,16 +264,14 @@ export class J41Client {
   // Auth endpoints
   // ------------------------------------------
 
-  /** @deprecated Legacy `/auth/challenge` endpoint was removed — use `getConsentChallenge()`. */
+  /** @deprecated Removed: the `/auth/challenge` endpoint no longer exists — use `getConsentChallenge()`. */
   async getAuthChallenge(): Promise<{ challengeId: string; challenge: string; expiresAt: string }> {
-    console.warn('[j41] getAuthChallenge() is deprecated — the /auth/challenge endpoint was removed; use getConsentChallenge().');
-    const res = await this.request<{ data: { challengeId: string; challenge: string; expiresAt: string } }>(
-      'GET', '/auth/challenge'
+    // Fail fast with a clear message instead of warning then hitting a 404.
+    throw new J41Error(
+      'getAuthChallenge() is removed — the /auth/challenge endpoint no longer exists; use getConsentChallenge()',
+      'DEPRECATED',
+      410,
     );
-    if (!res.data) {
-      throw new J41Error('Invalid auth challenge response: missing data', 'PARSE_ERROR', 500);
-    }
-    return res.data;
   }
 
   /** Get a VerusID login-consent challenge (canonical login flow) */
