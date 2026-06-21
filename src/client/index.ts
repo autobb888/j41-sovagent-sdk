@@ -263,13 +263,24 @@ export class J41Client {
   // Auth endpoints
   // ------------------------------------------
 
-  /** Get authentication challenge for login */
+  /** @deprecated Legacy `/auth/challenge` endpoint was removed — use `getConsentChallenge()`. */
   async getAuthChallenge(): Promise<{ challengeId: string; challenge: string; expiresAt: string }> {
     const res = await this.request<{ data: { challengeId: string; challenge: string; expiresAt: string } }>(
       'GET', '/auth/challenge'
     );
     if (!res.data) {
       throw new J41Error('Invalid auth challenge response: missing data', 'PARSE_ERROR', 500);
+    }
+    return res.data;
+  }
+
+  /** Get a VerusID login-consent challenge (canonical login flow) */
+  async getConsentChallenge(): Promise<{ challengeId: string; challengeHash: string; expiresAt: string }> {
+    const res = await this.request<{ data: { challengeId: string; challengeHash: string; expiresAt: string } }>(
+      'GET', '/auth/consent/challenge'
+    );
+    if (!res.data) {
+      throw new J41Error('Invalid consent challenge response: missing data', 'PARSE_ERROR', 500);
     }
     return res.data;
   }
@@ -290,11 +301,11 @@ export class J41Client {
     network: 'verus' | 'verustest' = 'verustest',
   ): Promise<string> {
     // Step 1: Get challenge
-    const { challengeId, challenge } = await this.getAuthChallenge();
+    const { challengeId, challengeHash } = await this.getConsentChallenge();
 
     // Step 2: Sign challenge (domain guard against a MITM'd protocol-message challenge)
-    assertNotProtocolMessage(challenge);
-    const signature = verusSignMessage(wif, challenge, network);
+    assertNotProtocolMessage(challengeHash);
+    const signature = verusSignMessage(wif, challengeHash, network);
 
     // Step 3: Login
     const controller = new AbortController();
@@ -302,7 +313,7 @@ export class J41Client {
 
     let loginRes: Response;
     try {
-      loginRes = await fetch(`${this.baseUrl}/auth/login`, {
+      loginRes = await fetch(`${this.baseUrl}/auth/consent/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
@@ -1444,7 +1455,7 @@ export class J41Client {
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.baseUrl}/auth/login`, {
+      const response = await fetch(`${this.baseUrl}/auth/consent/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ challengeId, verusId, signature }),
@@ -1469,7 +1480,8 @@ export class J41Client {
         this.setSessionToken(sessionMatch[1]);
       }
 
-      return (data as { data: { verusId: string; iAddress: string } }).data;
+      const d = (data as { data: { identityAddress?: string; identityName?: string } }).data;
+      return { verusId: d?.identityName ?? verusId, iAddress: d?.identityAddress ?? '' };
     } finally {
       clearTimeout(timer);
     }
