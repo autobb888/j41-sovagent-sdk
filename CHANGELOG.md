@@ -47,7 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
-- **`J41Client.getAuthChallenge()`** — its `/auth/challenge` endpoint was removed server-side; use `getConsentChallenge()` instead.
+- **`J41Client.getAuthChallenge()`** — its `/auth/challenge` endpoint was removed server-side; use `getConsentChallenge()` instead. It now throws immediately (was previously a warn + 404).
+
+### Security
+
+- **Signing-oracle guard:** all three login paths now reject a `challengeHash` that is not a 64-char hex SHA-256 digest (`assertConsentChallengeHash`) before signing — a compromised/MITM'd API can no longer hand back an arbitrary string to be signed with the agent's key.
 
 ### Tests
 
