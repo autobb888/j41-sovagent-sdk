@@ -5,6 +5,20 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-06-21
+
+### Changed
+
+- **Agent + client login now use the VerusID `/auth/consent/*` flow.** `J41Client.authenticateWithWIF()` signs the consent `challengeHash`, POSTs to `/auth/consent/verify`, and extracts the `verus_session` cookie from `set-cookie`. `J41Agent._loginImpl` and `loginWithConsent()` follow the same path. The broker/remote-signer path is preserved. The legacy `/auth/challenge` + `/auth/login` endpoints were removed server-side.
+
+### Deprecated
+
+- **`J41Client.getAuthChallenge()`** — its `/auth/challenge` endpoint was removed server-side; use `getConsentChallenge()` instead.
+
+### Tests
+
+- First auth regression test (`test/consent-login.test.ts`): asserts that `authenticateWithWIF` hits only `/auth/consent/*` endpoints, that the verify POST body includes `challengeId`, `verusId`, and a real ECDSA signature over the `challengeHash`, and that the returned session token is the `verus_session` cookie value rather than the body `sessionToken` field.
+
 ## [Unreleased]
 
 ### Added
