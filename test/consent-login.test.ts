@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
 const { J41Client } = require('../dist/client/index.js');
+const { J41Agent } = require('../dist/agent.js');
 const { generateKeypair } = require('../dist/identity/keypair.js');
 
 // ---------------------------------------------------------------------------
@@ -200,5 +201,97 @@ describe('J41Client — consent login (/auth/consent/*)', () => {
     } finally {
       (globalThis as any).fetch = originalFetch;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// J41Agent._loginImpl — consent path (dispatcher's login path + broker-signer routing)
+// ---------------------------------------------------------------------------
+
+describe('J41Agent._loginImpl — consent login path', () => {
+  it('agent authenticate() routes signing through remote signer and extracts verus_session cookie', async () => {
+    const CHALLENGE_HASH = 'a'.repeat(64);
+    const signedMessages: string[] = [];
+
+    const signer = {
+      async signMessage(msg: string): Promise<string> {
+        signedMessages.push(msg);
+        return 'FAKESIG_AGENT';
+      },
+      async signBrokered(_req: any): Promise<any> {
+        return { signature: 'sig:brok', timestamp: 0, message: '' };
+      },
+    };
+
+    const agent = new J41Agent({
+      apiUrl: 'https://api.example.com',
+      identityName: 'test@',
+      network: 'verustest',
+      signer,
+    });
+
+    // Stub getConsentChallenge so no real HTTP is made
+    agent.client.getConsentChallenge = async () => ({
+      challengeId: 'iChalTest',
+      challengeHash: CHALLENGE_HASH,
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    });
+
+    const verifyUrls: string[] = [];
+    const originalFetch = (globalThis as any).fetch;
+
+    try {
+      (globalThis as any).fetch = async (url: string, init: RequestInit = {}) => {
+        verifyUrls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: {
+            get(k: string) {
+              if (k.toLowerCase() === 'set-cookie') return 'verus_session=AGENTCOOKIE; Path=/; HttpOnly';
+              return null;
+            },
+          },
+          async json() {
+            return {
+              data: {
+                success: true,
+                identityAddress: 'iAddr',
+                identityName: 'test@',
+                sessionToken: 'rawtok',
+                expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+              },
+            };
+          },
+        };
+      };
+
+      await agent.authenticate();
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
+
+    // 1. Remote signer's signMessage was called with the challengeHash
+    assert.strictEqual(signedMessages.length, 1, 'signer.signMessage should be called exactly once');
+    assert.strictEqual(signedMessages[0], CHALLENGE_HASH, 'signer.signMessage should receive the challengeHash');
+
+    // 2. The POST hit /auth/consent/verify (NOT /auth/login)
+    assert.strictEqual(verifyUrls.length, 1, 'Expected exactly 1 fetch call (the verify POST)');
+    assert.ok(
+      verifyUrls[0].endsWith('/auth/consent/verify'),
+      `POST should target /auth/consent/verify, got: ${verifyUrls[0]}`,
+    );
+    assert.ok(
+      !verifyUrls[0].includes('/auth/login'),
+      `Should NOT call /auth/login, got: ${verifyUrls[0]}`,
+    );
+
+    // 3. Session token is extracted from the cookie, not from the body's sessionToken
+    assert.strictEqual(
+      agent.client.getSessionToken(),
+      'AGENTCOOKIE',
+      'getSessionToken() should return the verus_session cookie value, not the body sessionToken',
+    );
   });
 });

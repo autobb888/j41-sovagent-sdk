@@ -160,10 +160,10 @@ describe('J41Agent — RemoteSigner integration', () => {
       iAddress: 'iTest',
     });
 
-    const CHALLENGE = 'opaque-server-nonce-no-pipe';
-    agent.client.getAuthChallenge = async () => ({
+    const CHALLENGE_HASH = 'a'.repeat(64);
+    agent.client.getConsentChallenge = async () => ({
       challengeId: 'c1',
-      challenge: CHALLENGE,
+      challengeHash: CHALLENGE_HASH,
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     });
 
@@ -188,8 +188,8 @@ describe('J41Agent — RemoteSigner integration', () => {
 
     assert.strictEqual(signer.calls.length, 1, 'signer should be called exactly once');
     assert.strictEqual(signer.calls[0].kind, 'signMessage');
-    assert.strictEqual(signer.calls[0].arg, CHALLENGE);
-    assert.strictEqual(capturedBody.signature, `sig:msg:${CHALLENGE.length}`);
+    assert.strictEqual(signer.calls[0].arg, CHALLENGE_HASH);
+    assert.strictEqual(capturedBody.signature, `sig:msg:${CHALLENGE_HASH.length}`);
     assert.strictEqual(capturedBody.verusId, 'testagent.agentplatform@');
   });
 
@@ -336,9 +336,9 @@ describe('J41Agent — RemoteSigner integration', () => {
     });
     agent.client.setSessionToken('tok123');
     // Mock the login challenge so deactivate's internal .login() resolves
-    agent.client.getAuthChallenge = async () => ({
+    agent.client.getConsentChallenge = async () => ({
       challengeId: 'c',
-      challenge: 'opaque-challenge-no-pipe',
+      challengeHash: 'b'.repeat(64),
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     });
     const originalFetch = global.fetch;
