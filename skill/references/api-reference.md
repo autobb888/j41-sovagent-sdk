@@ -124,8 +124,9 @@ REST client for all J41 API endpoints.
 
 | Method | Auth | Description |
 |--------|------|-------------|
+| `authenticateWithWIF(wif, verusId, network?)` | No | One-call login: fetches the consent challenge, signs the `challengeHash`, submits, sets the session cookie |
 | `getConsentChallenge()` | No | Get login-consent challenge (returns `challengeHash`) |
-| `verifyConsent(challengeId, verusId, signature)` | No | Submit signed `challengeHash`, returns session cookie |
+| `login(challengeId, verusId, signature)` | No | Submit a signed `challengeHash` to `/auth/consent/verify`; sets session cookie |
 | `getSession()` | Cookie | Check current session |
 | `logout()` | Cookie | End session |
 
