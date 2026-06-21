@@ -363,7 +363,7 @@ export class J41Agent extends EventEmitter {
     if (!this.wif && !this.signer) throw new Error('WIF key or remote signer required');
     if (!this.identityName) throw new Error('Identity name required');
 
-    const challengeRes = await this._client.getAuthChallenge();
+    const challengeRes = await this._client.getConsentChallenge();
     if (challengeRes.expiresAt) {
       const expiryMs = new Date(challengeRes.expiresAt).getTime();
       if (Number.isNaN(expiryMs)) {
@@ -377,15 +377,15 @@ export class J41Agent extends EventEmitter {
     // Domain guard: never let a (MITM-able) server challenge be a J41-protocol
     // message we'd sign with our identity key — that would be a signing oracle.
     // The remote signer's own policy should also enforce this; we defend in depth.
-    assertNotProtocolMessage(challengeRes.challenge);
-    const signature = await this._signMessage(challengeRes.challenge);
+    assertNotProtocolMessage(challengeRes.challengeHash);
+    const signature = await this._signMessage(challengeRes.challengeHash);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
 
     let loginRes: Response;
     try {
-      loginRes = await fetch(`${this.apiUrl}/auth/login`, {
+      loginRes = await fetch(`${this.apiUrl}/auth/consent/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
