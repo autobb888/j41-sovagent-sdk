@@ -10,6 +10,7 @@ export type { DisputePolicy, CostBreakdown } from '../onboarding/finalize.js';
 import { keypairFromWIF } from '../identity/keypair.js';
 import { signMessage as verusSignMessage, verifyMessage as verusVerifyMessage } from '../identity/signer.js';
 import { assertNotProtocolMessage } from '../signing/messages.js';
+import { assertConsentChallengeHash } from '../auth/challenge-hash.js';
 import type { WorkspaceStatus, WorkspaceTokenResponse } from '../workspace/index.js';
 
 export interface J41ClientConfig {
@@ -265,6 +266,7 @@ export class J41Client {
 
   /** @deprecated Legacy `/auth/challenge` endpoint was removed — use `getConsentChallenge()`. */
   async getAuthChallenge(): Promise<{ challengeId: string; challenge: string; expiresAt: string }> {
+    console.warn('[j41] getAuthChallenge() is deprecated — the /auth/challenge endpoint was removed; use getConsentChallenge().');
     const res = await this.request<{ data: { challengeId: string; challenge: string; expiresAt: string } }>(
       'GET', '/auth/challenge'
     );
@@ -304,6 +306,7 @@ export class J41Client {
     const { challengeId, challengeHash } = await this.getConsentChallenge();
 
     // Step 2: Sign challenge (domain guard against a MITM'd protocol-message challenge)
+    assertConsentChallengeHash(challengeHash);
     assertNotProtocolMessage(challengeHash);
     const signature = verusSignMessage(wif, challengeHash, network);
 

@@ -20,6 +20,7 @@ import { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypai
 import { signMessage } from './identity/signer.js';
 import type { RemoteSigner, BrokerSignRequest, BrokerSignResponse } from './identity/remote-signer.js';
 import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMessage, buildApplyBountyMessage, assertNotProtocolMessage } from './signing/messages.js';
+import { assertConsentChallengeHash } from './auth/challenge-hash.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import type { Job, RegisterServiceData } from './client/index.js';
@@ -377,6 +378,7 @@ export class J41Agent extends EventEmitter {
     // Domain guard: never let a (MITM-able) server challenge be a J41-protocol
     // message we'd sign with our identity key — that would be a signing oracle.
     // The remote signer's own policy should also enforce this; we defend in depth.
+    assertConsentChallengeHash(challengeRes.challengeHash);
     assertNotProtocolMessage(challengeRes.challengeHash);
     const signature = await this._signMessage(challengeRes.challengeHash);
 
