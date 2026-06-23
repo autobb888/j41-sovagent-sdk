@@ -539,6 +539,12 @@ export class J41Client {
     return res.data;
   }
 
+  /** Get job witness (platform-signed record for the on-chain VDXF write) */
+  async getJobWitness(jobId: string): Promise<JobWitnessResponse> {
+    const res = await this.request<{ data: JobWitnessResponse }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/witness`);
+    return res.data;
+  }
+
   // ------------------------------------------
   // Session lifecycle endpoints
   // ------------------------------------------
@@ -2727,6 +2733,36 @@ export interface PaymentAddressResponse {
 }
 
 // ------------------------------------------
+// Job witness types
+// ------------------------------------------
+
+export interface WitnessRecord {
+  amount: number;
+  buyerVerusId: string;
+  completedAt: string;
+  currency: string;
+  jobHash: string;
+  schemaVersion: number;
+  sellerVerusId: string;
+  serviceId: string | null;
+  status: string;
+}
+
+export interface WitnessBlock {
+  schemaVersion: number;
+  signedBy: string;
+  signedByName: string;
+  signature: string;
+  signatureHeight: number;
+  algorithm: string;
+}
+
+export interface JobWitnessResponse {
+  record: WitnessRecord;
+  witness: WitnessBlock;
+}
+
+// ------------------------------------------
 // Payment verification types
 // ------------------------------------------
 
@@ -2742,6 +2778,7 @@ export interface VerifyPaymentResponse {
   reason: string | null;
   /** Amount actually paid to the expected address. */
   actualAmount: number;
+  confirmedAmount: number;
   /** Amount the caller asserted. */
   expectedAmount: number;
   confirmations: number;

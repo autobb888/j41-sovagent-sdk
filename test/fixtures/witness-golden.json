@@ -1,0 +1,28 @@
+{
+  "_comment": "Golden vector from the deployed testnet backend (api.junction41.io, 2026-06-23). Acceptance gate for verifyWitness. Stage 1: JCS(record) must equal _jcs and sha256 to _datahash. Stage 2: verifyWitness(record, witness) -> verified:true; tamper any record field or the signature -> false. Validated three ways by backend: independent JCS, datahash match, daemon verifysignature -> verified.",
+  "record": {
+    "amount": 2.5,
+    "buyerVerusId": "i9zVRJfR62cPyjL4HB9pUbRbqtba1kVCEL",
+    "completedAt": "2026-06-23T12:00:00.000Z",
+    "currency": "VRSCTEST",
+    "jobHash": "a1b2c3d4e5f600112233445566778899",
+    "schemaVersion": 1,
+    "sellerVerusId": "i7xKUpKQDSriYFfgHYfRpFc2uzRKWLDkjW",
+    "serviceId": null,
+    "status": "completed"
+  },
+  "witness": {
+    "schemaVersion": 1,
+    "signedBy": "i7xKUpKQDSriYFfgHYfRpFc2uzRKWLDkjW",
+    "signedByName": "agentplatform@",
+    "signature": "AgWnDBEAAUEgQ+tTkV2rib0pFwzauBFheOZvy6J/gx8aUu883rxwyWZOUmAOMjUa+U16yql+m8TRzQmNbLorgDKZtj4lTHqFpw==",
+    "signatureHeight": 1117351,
+    "algorithm": "verusid-signdata-sha256"
+  },
+  "_jcs": "{\"amount\":2.5,\"buyerVerusId\":\"i9zVRJfR62cPyjL4HB9pUbRbqtba1kVCEL\",\"completedAt\":\"2026-06-23T12:00:00.000Z\",\"currency\":\"VRSCTEST\",\"jobHash\":\"a1b2c3d4e5f600112233445566778899\",\"schemaVersion\":1,\"sellerVerusId\":\"i7xKUpKQDSriYFfgHYfRpFc2uzRKWLDkjW\",\"serviceId\":null,\"status\":\"completed\"}",
+  "_datahash": "3d49adad930600dfaee905f4bbe584049318c3301094c615c4a39a10c0bc4830",
+  "_network": "verustest",
+  "_signerAddresses": ["RAWwNeTLRg9urgnDPQtPyZ6NRycsmSY2J2"],
+  "_minimumsignatures": 1,
+  "_signerSource": "https://api.junction41.io/v1/identity/i7xKUpKQDSriYFfgHYfRpFc2uzRKWLDkjW/keys (agentplatform.VRSCTEST@, fetched 2026-06-23). primaryAddresses[0] matches the address recovered from the golden signature over sha256(chainId||heightLE||identity||PREFIX||datahash)."
+}
