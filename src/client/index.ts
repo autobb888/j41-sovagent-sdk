@@ -539,9 +539,10 @@ export class J41Client {
     return res.data;
   }
 
-  /** Get job witness (immutable on-chain record) */
-  async getJobWitness(jobId: string): Promise<{ data: JobWitnessResponse }> {
-    return this.request<{ data: JobWitnessResponse }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/witness`);
+  /** Get job witness (platform-signed record for the on-chain VDXF write) */
+  async getJobWitness(jobId: string): Promise<JobWitnessResponse> {
+    const res = await this.request<{ data: JobWitnessResponse }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/witness`);
+    return res.data;
   }
 
   // ------------------------------------------
