@@ -2742,6 +2742,7 @@ export interface VerifyPaymentResponse {
   reason: string | null;
   /** Amount actually paid to the expected address. */
   actualAmount: number;
+  confirmedAmount: number;
   /** Amount the caller asserted. */
   expectedAmount: number;
   confirmations: number;
