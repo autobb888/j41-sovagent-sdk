@@ -41,6 +41,10 @@ export { generateKeypair, keypairFromWIF, type Keypair } from './identity/keypai
 // Message signing
 export { signMessage, signChallenge, verifyMessage } from './identity/signer.js';
 
+// Offline (daemon-less) witness verification
+export { verifyWitness, jcsDatahash } from './identity/witness-verify.js';
+export type { WitnessRecord, WitnessBlock, JobWitnessResponse } from './client/index.js';
+
 // Remote signer (host-side broker integration — let agents run without a WIF)
 export {
   createLocalSigner,
