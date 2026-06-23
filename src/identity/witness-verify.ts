@@ -18,6 +18,17 @@
  * it through the message-varslice path). This was settled empirically against
  * the golden vector: the recovered R-address matches agentplatform@'s on-chain
  * primaryAddresses only under this interpretation.
+ *
+ * MAINTAINER NOTE: this pairs with the DAEMON's `signdata` (signature over a hash),
+ * NOT with the SDK's `signChallenge`/`signMessageOffline` (which wrap a UTF-8
+ * challenge through `hashMessage`). The two constructions differ on purpose — do
+ * NOT "align" this verifier with `signChallenge`; that would break it (it would
+ * then recover a different, wrong address). The golden vector is the regression gate.
+ *
+ * TRUST ROOT: the signer's primary addresses come from `client.getIdentityKeys()`
+ * (the identity's on-chain keys), never from the witness blob — so `verified:true`
+ * is exactly as trustworthy as that channel. On mainnet the client enforces
+ * `J41_PLATFORM_SIGNER` over the getIdentityKeys response; on testnet it is trusted.
  */
 
 import * as crypto from 'crypto';
