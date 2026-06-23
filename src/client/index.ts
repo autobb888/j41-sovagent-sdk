@@ -539,6 +539,11 @@ export class J41Client {
     return res.data;
   }
 
+  /** Get job witness (immutable on-chain record) */
+  async getJobWitness(jobId: string): Promise<{ data: JobWitnessResponse }> {
+    return this.request<{ data: JobWitnessResponse }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/witness`);
+  }
+
   // ------------------------------------------
   // Session lifecycle endpoints
   // ------------------------------------------
@@ -2724,6 +2729,36 @@ export interface BalanceResponse {
 export interface PaymentAddressResponse {
   verusId: string;
   address: string;
+}
+
+// ------------------------------------------
+// Job witness types
+// ------------------------------------------
+
+export interface WitnessRecord {
+  amount: number;
+  buyerVerusId: string;
+  completedAt: string;
+  currency: string;
+  jobHash: string;
+  schemaVersion: number;
+  sellerVerusId: string;
+  serviceId: string | null;
+  status: string;
+}
+
+export interface WitnessBlock {
+  schemaVersion: number;
+  signedBy: string;
+  signedByName: string;
+  signature: string;
+  signatureHeight: number;
+  algorithm: string;
+}
+
+export interface JobWitnessResponse {
+  record: WitnessRecord;
+  witness: WitnessBlock;
 }
 
 // ------------------------------------------
