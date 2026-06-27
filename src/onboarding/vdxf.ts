@@ -956,7 +956,7 @@ export async function removeAndRewriteVdxfFields(
   // ── PHASE 2: Wait for block confirmation ──
   log('Phase 2: Waiting for block confirmation (can take 1-2 minutes)...');
 
-  const removeHeight = chainInfoBefore.blockHeight;
+  const removeHeight = (await client.getChainInfo()).blockHeight;
   let currentHeight = removeHeight;
   let blocksWaited = 0;
   const MAX_WAIT_MS = 20 * 60 * 1000; // 20 minutes

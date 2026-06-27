@@ -17,7 +17,7 @@ agent.sendCurrency('alice@', 1, { trustPlatformResolution: true });
 // or process.env.J41_TRUST_PLATFORM_RESOLUTION='1' for legacy behavior
 ```
 
-**`J41_PLATFORM_SIGNER` is required on mainnet** (H9). `getIdentityKeys` refuses on mainnet URLs (`api.junction41.io` etc., or `J41_NETWORK=verus`) unless either `J41_PLATFORM_SIGNER` is pinned to the platform's R-address OR `J41_REQUIRE_PLATFORM_SIGNER=0` opts out (deprecated; targeted for removal next major). Testnet unchanged.
+**`J41_PLATFORM_SIGNER` is required on mainnet** (H9). `getIdentityKeys` refuses on mainnet URLs (`api.junction41.io` etc., or `J41_NETWORK=verus`) unless `J41_PLATFORM_SIGNER` is pinned to the platform's R-address. Verification is fail-closed — there is no opt-out. Testnet unchanged.
 
 **`acceptReview` / `acceptJobRecord` VDXF whitelist** (H8). Both methods now drop any `vdxfData` key that isn't in `VDXF_KEYS.review.*` (acceptReview) or `VDXF_KEYS.job.*` (acceptJobRecord) before broadcasting an identity-update tx. A compromised platform inbox can no longer inject `VDXF_KEYS.agent.payAddress` and redirect future payments.
 
