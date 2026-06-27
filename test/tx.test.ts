@@ -1,10 +1,11 @@
-import { describe, it } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
-const { buildPayment, selectUtxos } = require('../dist/tx/payment.js');
+const { buildPayment, selectUtxos, DEFAULT_TX_EXPIRY_DELTA } = require('../dist/tx/payment.js');
 const { generateKeypair } = require('../dist/identity/keypair.js');
+const utxolib = require('@bitgo/utxo-lib');
 
 // amount/fee args to selectUtxos/buildPayment are in VRSC (whole units, scaled to satoshis internally).
 describe('Transaction Builder', () => {
@@ -26,4 +27,20 @@ describe('Transaction Builder', () => {
       /[Ii]nsufficient funds/,
     );
   });
+});
+
+test('DEFAULT_TX_EXPIRY_DELTA is exported and equals 60', () => {
+  assert.strictEqual(DEFAULT_TX_EXPIRY_DELTA, 60);
+});
+
+test('buildPayment sets nExpiryHeight from expiryHeight param', () => {
+  const kp = generateKeypair('verustest');
+  const utxos = [{ txid: '11'.repeat(32), vout: 0, satoshis: 5_000_000_00 }];
+  const hex = buildPayment({
+    wif: kp.wif, toAddress: kp.address, amount: 1, utxos,
+    changeAddress: kp.address, network: 'verustest', expiryHeight: 123456,
+  });
+  const net = utxolib.networks.verustest || utxolib.networks.verus;
+  const tx = utxolib.Transaction.fromHex(typeof hex === 'string' ? hex : hex.rawhex, net);
+  assert.strictEqual(tx.expiryHeight, 123456);
 });

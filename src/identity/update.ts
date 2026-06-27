@@ -14,6 +14,8 @@ import type { RawIdentityData, Utxo } from '../client/index.js';
 const DEFAULT_FEE = 10000; // 0.0001 VRSC in satoshis
 const SATS_PER_COIN = 100000000;
 
+export const IDENTITY_EXPIRY_DELTA = 200;
+
 export interface IdentityUpdateParams {
   /** Agent's WIF key */
   wif: string;
@@ -33,6 +35,8 @@ export interface IdentityUpdateParams {
   recoveryauthority?: string;
   /** Clear existing contentmultimap before applying additions (for migration) */
   clearContentmultimap?: boolean;
+  /** Block height at which the transaction expires. If omitted, falls back to identityData.blockHeight + IDENTITY_EXPIRY_DELTA. */
+  expiryHeight?: number;
 }
 
 /**
@@ -161,7 +165,10 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
   // 6. Build the transaction
   const txb = new utxolib.TransactionBuilder(networkObj);
   txb.setVersion(4);
-  txb.setExpiryHeight(identityData.blockHeight + 200);
+  const expiry = (Number.isInteger(params.expiryHeight) && (params.expiryHeight as number) > 0)
+    ? (params.expiryHeight as number)
+    : (identityData.blockHeight + IDENTITY_EXPIRY_DELTA);
+  txb.setExpiryHeight(expiry);
   txb.setVersionGroupId(0x892f2085); // Sapling version group ID
 
   // Output 0: Updated identity (value=0)

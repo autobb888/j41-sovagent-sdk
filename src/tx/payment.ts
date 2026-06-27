@@ -16,6 +16,8 @@ import { keypairFromWIF } from '../identity/keypair.js';
 const DEFAULT_FEE = 10000; // 0.0001 VRSC in satoshis
 const SATS_PER_COIN = 100000000;
 
+export const DEFAULT_TX_EXPIRY_DELTA = 60;
+
 // i-address version byte (same on mainnet and testnet)
 const I_ADDRESS_VERSION = 0x66;
 
@@ -36,6 +38,8 @@ export interface PaymentParams {
    * MUST pass network: 'verus'.
    */
   network?: 'verus' | 'verustest';
+  /** Block height at which the transaction expires. If omitted, no expiry is set (tx never expires). */
+  expiryHeight?: number;
 }
 
 /**
@@ -158,6 +162,9 @@ export function buildPayment(params: PaymentParams & { returnDetails?: boolean }
   const txb = new utxolib.TransactionBuilder(networkObj);
   txb.setVersion(4);
   txb.setVersionGroupId(0x892f2085);
+  if (Number.isInteger(params.expiryHeight) && (params.expiryHeight as number) > 0) {
+    txb.setExpiryHeight(params.expiryHeight as number);
+  }
 
   // Add inputs — use script for i-address UTXOs (identity outputs)
   for (const utxo of selected) {
@@ -216,6 +223,8 @@ export interface MultiPaymentParams {
   changeAddress?: string;
   /** See PaymentParams.network (audit M6) — defaults to 'verustest'; J41Agent always passes its own network. */
   network?: 'verus' | 'verustest';
+  /** Block height at which the transaction expires. If omitted, no expiry is set (tx never expires). */
+  expiryHeight?: number;
 }
 
 /**
@@ -265,6 +274,9 @@ export function buildMultiPayment(params: MultiPaymentParams & { returnDetails?:
   const txb = new utxolib.TransactionBuilder(networkObj);
   txb.setVersion(4);
   txb.setVersionGroupId(0x892f2085);
+  if (Number.isInteger(params.expiryHeight) && (params.expiryHeight as number) > 0) {
+    txb.setExpiryHeight(params.expiryHeight as number);
+  }
 
   // Inputs
   for (const utxo of selected) {
