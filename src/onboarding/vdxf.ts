@@ -11,6 +11,7 @@ import type {
   WorkspaceAttestationInput,
   DisputePolicy,
 } from './finalize.js';
+import { IDENTITY_EXPIRY_DELTA } from '../identity/update.js';
 
 // --- Constants ---
 
@@ -925,6 +926,9 @@ export async function removeAndRewriteVdxfFields(
 
   const { buildIdentityUpdateTx } = await import('../identity/update.js');
 
+  // Fetch current chain tip so we can set a meaningful expiry on the remove tx.
+  const chainInfoBefore = await client.getChainInfo();
+
   // Build remove payload — pass as vdxfAdditions under MULTIMAPREMOVE_KEY
   const removeEntries = iAddressesToRemove.map(iAddr => ({
     [MULTIMAPREMOVE_KEY]: {
@@ -942,6 +946,7 @@ export async function removeAndRewriteVdxfFields(
       [MULTIMAPREMOVE_KEY]: removeEntries,
     },
     network: chain,
+    expiryHeight: chainInfoBefore.blockHeight + IDENTITY_EXPIRY_DELTA,
   });
 
   const removeResult = await client.broadcast(removeTxHex);
@@ -951,7 +956,6 @@ export async function removeAndRewriteVdxfFields(
   // ── PHASE 2: Wait for block confirmation ──
   log('Phase 2: Waiting for block confirmation (can take 1-2 minutes)...');
 
-  const chainInfoBefore = await client.getChainInfo();
   const removeHeight = chainInfoBefore.blockHeight;
   let currentHeight = removeHeight;
   let blocksWaited = 0;
@@ -998,6 +1002,7 @@ export async function removeAndRewriteVdxfFields(
     utxos: freshUtxos,
     vdxfAdditions: writeAdditions,
     network: chain,
+    expiryHeight: currentHeight + IDENTITY_EXPIRY_DELTA,
   });
 
   const writeResult = await client.broadcast(writeTxHex);

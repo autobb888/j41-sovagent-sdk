@@ -136,6 +136,7 @@ describe('Audit M6 — money-path defaults derive from agent network', () => {
       agent.client.getUtxos = async () => ({
         utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 100_000_000, address: origWifToAddress(kp.wif, 'verus') }],
       });
+      agent.client.getChainInfo = async () => ({ blockHeight: 1000 });
       agent.client.broadcast = async () => 'txid-123';
 
       // Send to the agent's own R-address (a valid R-address dest, no VerusID resolution).

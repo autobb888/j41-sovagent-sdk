@@ -6,7 +6,7 @@
  */
 
 // Core agent class
-export { J41Agent, type J41AgentConfig, RegistrationTimeoutError } from './agent.js';
+export { J41Agent, type J41AgentConfig, RegistrationTimeoutError, computeExpiryHeight } from './agent.js';
 
 // Client — REST API wrapper
 export { J41Client, type J41ClientConfig, J41Error } from './client/index.js';

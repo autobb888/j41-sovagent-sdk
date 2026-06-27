@@ -33,9 +33,19 @@ import type { JobCategory } from './pricing/tables.js';
 import { generateCanary, checkForCanaryLeak, type CanaryConfig } from './safety/canary.js';
 import { randomUUID } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
-import { buildIdentityUpdateTx } from './identity/update.js';
+import { buildIdentityUpdateTx, IDENTITY_EXPIRY_DELTA } from './identity/update.js';
+import { DEFAULT_TX_EXPIRY_DELTA } from './tx/payment.js';
 import { VDXF_KEYS, makeSubDD } from './onboarding/vdxf.js';
 import { WorkspaceClient } from './workspace/index.js';
+
+/**
+ * Compute a transaction expiry height from the current chain tip.
+ * Returns `tip + delta` when tip is a valid integer; returns `undefined`
+ * (letting the builder fall back to its own default) when tip is unavailable.
+ */
+export function computeExpiryHeight(tipHeight: number | undefined, delta: number): number | undefined {
+  return Number.isInteger(tipHeight) ? (tipHeight as number) + delta : undefined;
+}
 
 /**
  * Thrown when identity registration is broadcast on-chain but block
@@ -816,12 +826,14 @@ export class J41Agent extends EventEmitter {
         return null;
       }
 
+      const { blockHeight: _tip } = await this._client.getChainInfo();
       const rawhex = buildIdentityUpdateTx({
         wif: this.wif,
         identityData,
         utxos,
         vdxfAdditions,
         network: this.networkType,
+        expiryHeight: computeExpiryHeight(_tip, IDENTITY_EXPIRY_DELTA),
       });
 
       const txResult = await this._client.broadcast(rawhex);
@@ -1272,6 +1284,7 @@ export class J41Agent extends EventEmitter {
     }
 
     // Build identity update transaction with new authorities (no VDXF changes)
+    const { blockHeight: _tip } = await this._client.getChainInfo();
     const signedTxHex = buildIdentityUpdateTx({
       wif: this.wif,
       identityData,
@@ -1280,6 +1293,7 @@ export class J41Agent extends EventEmitter {
       network: this.networkType,
       revocationauthority: revokeAddress,
       recoveryauthority: recoverAddress,
+      expiryHeight: computeExpiryHeight(_tip, IDENTITY_EXPIRY_DELTA),
     });
 
     // Broadcast
@@ -1340,6 +1354,7 @@ export class J41Agent extends EventEmitter {
     const utxos = (utxoData.utxos || []).filter((u: any) => u.satoshis > 0);
     if (utxos.length === 0) throw new Error('No UTXOs available for TX fee');
 
+    const { blockHeight: _tip } = await this._client.getChainInfo();
     const vdxfAdditions: Record<string, unknown[]> = {
       [VDXF_KEYS.agent.status]: [makeSubDD(VDXF_KEYS.agent.status, status)],
     };
@@ -1350,6 +1365,7 @@ export class J41Agent extends EventEmitter {
       utxos,
       vdxfAdditions,
       network: this.networkType,
+      expiryHeight: computeExpiryHeight(_tip, IDENTITY_EXPIRY_DELTA),
     });
 
     const result = await this._client.broadcast(signedTxHex);
@@ -1435,12 +1451,14 @@ export class J41Agent extends EventEmitter {
 
       // 4. Build and sign the identity update transaction
       console.log(`[J41] Building identity update transaction...`);
+      const { blockHeight: _tip } = await this._client.getChainInfo();
       const signedTxHex = buildIdentityUpdateTx({
         wif: this.wif,
         identityData,
         utxos: utxoData.utxos,
         vdxfAdditions,
         network: this.networkType,
+        expiryHeight: computeExpiryHeight(_tip, IDENTITY_EXPIRY_DELTA),
       });
 
       // 5. Broadcast the signed transaction
@@ -1525,12 +1543,14 @@ export class J41Agent extends EventEmitter {
         vdxfAdditions[VDXF_KEYS.job.record] = [makeSubDD(VDXF_KEYS.job.record, JSON.stringify(jobRecord))];
       }
 
+      const { blockHeight: _tip } = await this._client.getChainInfo();
       const signedTxHex = buildIdentityUpdateTx({
         wif: this.wif,
         identityData,
         utxos: utxoData.utxos,
         vdxfAdditions,
         network: this.networkType,
+        expiryHeight: computeExpiryHeight(_tip, IDENTITY_EXPIRY_DELTA),
       });
 
       const broadcastResult = await this._client.broadcast(signedTxHex);
@@ -2211,6 +2231,7 @@ export class J41Agent extends EventEmitter {
       throw new Error(`Refusing to send change to a non-self address (${changeAddress}); change must go to the agent's own R-address or i-address.`);
     }
 
+    const { blockHeight: _tip } = await this._client.getChainInfo();
     const built = buildPayment({
       wif,
       toAddress,
@@ -2219,6 +2240,7 @@ export class J41Agent extends EventEmitter {
       changeAddress,
       network: this.networkType,
       returnDetails: true,
+      expiryHeight: computeExpiryHeight(_tip, DEFAULT_TX_EXPIRY_DELTA),
     });
 
     // Mark inputs spent BEFORE broadcast so a following send can't reselect them.
@@ -2319,6 +2341,7 @@ export class J41Agent extends EventEmitter {
 
     const { buildMultiPayment, wifToAddress } = await import('./tx/payment.js');
     const changeAddress = wifToAddress(wif, this.networkType);
+    const { blockHeight: _tip } = await this._client.getChainInfo();
 
     const result = (buildMultiPayment as any)({
       wif,
@@ -2327,6 +2350,7 @@ export class J41Agent extends EventEmitter {
       changeAddress,
       network: this.networkType,
       returnDetails: true,
+      expiryHeight: computeExpiryHeight(_tip, DEFAULT_TX_EXPIRY_DELTA),
     });
 
     // Mark inputs spent BEFORE broadcast so a following send can't reselect them.
