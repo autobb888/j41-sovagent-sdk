@@ -739,24 +739,20 @@ export class J41Client {
     // letting the platform's getIdentityKeys response go unverified on mainnet
     // means a MITM/compromised platform becomes the on-chain trust anchor for
     // every downstream signature verification. On testnet the pin remains
-    // optional for dev workflows. Override with J41_REQUIRE_PLATFORM_SIGNER=0
-    // for legacy mainnet ops while the operator migrates (deprecated; will be
-    // removed in the next major release).
+    // optional for dev workflows.
     //
     // We don't have a `networkType` field on the client, so detect mainnet by
     // the base URL pattern OR the J41_NETWORK env. baseUrl test catches the
     // default production endpoint; the env is the explicit override for
     // operators on custom domains.
-    const requireOnMainnet = process.env.J41_REQUIRE_PLATFORM_SIGNER !== '0';
     const looksLikeMainnet =
       /^https:\/\/(api\.)?junction41\.(io|com|net)/i.test(this.baseUrl)
       || process.env.J41_NETWORK === 'verus';
-    if (looksLikeMainnet && requireOnMainnet && !pinned) {
+    if (looksLikeMainnet && !pinned) {
       throw new J41Error(
         'getIdentityKeys refused on mainnet: J41_PLATFORM_SIGNER is unset and the ' +
         'platform-signed response is required for trust-anchor integrity on the ' +
-        'production network. Set J41_PLATFORM_SIGNER to the platform\'s R-address, ' +
-        'or J41_REQUIRE_PLATFORM_SIGNER=0 to opt out (deprecated).',
+        'production network. Set J41_PLATFORM_SIGNER to the platform\'s R-address.',
         'PLATFORM_SIGNER_REQUIRED',
         500,
       );
