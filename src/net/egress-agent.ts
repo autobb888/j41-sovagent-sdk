@@ -20,7 +20,7 @@ export function connectThroughProxy(o: {
   return new Promise((resolve, reject) => {
     const socket = net.connect(o.proxyPort, o.proxyHost);
     let settled = false;
-    const fail = (e: Error) => { if (!settled) { settled = true; socket.destroy(); reject(e); } };
+    const fail = (e: Error) => { if (!settled) { settled = true; clearTimeout(timer); socket.destroy(); reject(e); } };
     const timer = setTimeout(() => fail(new Error('egress CONNECT timeout')), timeoutMs);
     socket.once('error', fail);
     socket.once('connect', () => {
@@ -37,6 +37,7 @@ export function connectThroughProxy(o: {
       buf += chunk.toString('latin1');
       const end = buf.indexOf('\r\n\r\n');
       if (end === -1) { if (buf.length > 8192) fail(new Error('egress CONNECT header too large')); return; }
+      // Safe to drop bytes past the header: TLS is client-speaks-first, so the target sends nothing before our ClientHello.
       socket.removeListener('data', onData);
       const statusLine = buf.slice(0, buf.indexOf('\r\n'));
       const m = statusLine.match(/^HTTP\/\d\.\d (\d{3})/);
@@ -70,8 +71,9 @@ export class EgressConnectAgent extends https.Agent {
     connectThroughProxy({ ...this.egress, targetHost, targetPort })
       .then((raw) => {
         const tlsSocket = tls.connect({ socket: raw, servername: targetHost });
-        tlsSocket.once('secureConnect', () => callback?.(null, tlsSocket));
-        tlsSocket.once('error', (e) => { raw.destroy(); callback?.(e, null as unknown as Duplex); });
+        const onErr = (e: Error) => { raw.destroy(); callback?.(e, null as unknown as Duplex); };
+        tlsSocket.once('secureConnect', () => { tlsSocket.removeListener('error', onErr); callback?.(null, tlsSocket); });
+        tlsSocket.once('error', onErr);
       })
       .catch((err) => callback?.(err, null as unknown as Duplex));
     return undefined;
@@ -87,7 +89,10 @@ export function getEgressSocketAgent(env: NodeJS.ProcessEnv = process.env): http
   const uri = env.J41_EGRESS_PROXY;
   if (!uri) return undefined;
   let u: URL;
-  try { u = new URL(uri); } catch { return undefined; }
+  try { u = new URL(uri); } catch {
+    console.warn(`[egress] J41_EGRESS_PROXY is set but unparseable: ${uri}`);
+    return undefined;
+  }
   return new EgressConnectAgent({
     proxyHost: u.hostname,
     proxyPort: Number(u.port) || 80,

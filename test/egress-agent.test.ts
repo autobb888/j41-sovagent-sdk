@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 import net from 'node:net';
 import http from 'node:http';
+import tls from 'node:tls';
+import { EventEmitter } from 'node:events';
 import { getEgressSocketAgent, connectThroughProxy, EgressConnectAgent } from '../src/net/egress-agent.js';
 
 // A stub HTTP CONNECT proxy: accepts CONNECT to `allow` with the right Bearer
@@ -81,4 +83,32 @@ test('connectThroughProxy FAILS CLOSED on a bad token', async () => {
       targetHost: '127.0.0.1', targetPort: echo.port,
     }), /refused/i);
   } finally { echo.close(); proxy.close(); }
+});
+
+test('EgressConnectAgent pins servername to the target and never disables cert validation', async () => {
+  const echo = await startEcho();
+  const proxy = await startStubProxy(`127.0.0.1:${echo.port}`, 'tok');
+  const orig = tls.connect as any;
+  let seen: any = null;
+  (tls as any).connect = (opts: any) => {
+    seen = opts;
+    const s: any = new EventEmitter();
+    s.destroy = () => {};
+    setImmediate(() => s.emit('secureConnect'));
+    return s;
+  };
+  try {
+    const agent = new EgressConnectAgent({ proxyHost: '127.0.0.1', proxyPort: proxy.port, token: 'tok' });
+    await new Promise<void>((resolve, reject) => {
+      (agent as any).createConnection({ host: '127.0.0.1', port: echo.port }, (err: Error | null) => err ? reject(err) : resolve());
+    });
+    assert.strictEqual(seen.servername, '127.0.0.1', 'servername must be pinned to the target host');
+    assert.notStrictEqual(seen.rejectUnauthorized, false, 'must never disable cert validation');
+  } finally {
+    (tls as any).connect = orig;
+    // The stub tls.connect never wraps/owns the real tunneled socket the way real
+    // TLS does, so destroy it explicitly to avoid a leaked handle keeping the loop alive.
+    seen?.socket?.destroy?.();
+    echo.close(); proxy.close();
+  }
 });
