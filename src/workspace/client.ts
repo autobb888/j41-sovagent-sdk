@@ -9,6 +9,7 @@
 import { randomBytes } from 'crypto';
 import { io, Socket } from 'socket.io-client';
 import { RECONNECT_CONFIG } from '../chat/reconnect-config.js';
+import { getEgressSocketAgent } from '../net/egress-agent.js';
 
 /**
  * Validate that a workspace path is safe: relative, no `..` segments, no leading `/`.
@@ -243,6 +244,7 @@ export class WorkspaceClient {
       // size on the workspace transport as well.
       this.socket = io(origin + '/jailbox', {
         path: '/ws',
+        agent: getEgressSocketAgent(),
         auth: { type: 'agent', token },
         transports: ['websocket', 'polling'],
         ...({ maxPayload: Number(process.env.J41_WORKSPACE_MAX_MESSAGE_BYTES ?? 4 * 1024 * 1024) } as any),

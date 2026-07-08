@@ -5,6 +5,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { RECONNECT_CONFIG, cycleBackoffDelay, sleep } from './reconnect-config.js';
+import { getEgressSocketAgent } from '../net/egress-agent.js';
 
 export interface ChatClientConfig {
   /** Base URL of the J41 API (e.g. https://api.junction41.io) */
@@ -151,6 +152,7 @@ export class ChatClient {
       // server could deliver multi-GB events and OOM the client.
       this.socket = io(this.config.apiUrl, {
         path: '/ws',
+        agent: getEgressSocketAgent(),
         auth: { token: chatToken },
         extraHeaders: {
           'Cookie': `verus_session=${this.config.sessionToken}`,

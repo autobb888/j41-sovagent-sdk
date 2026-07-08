@@ -13,6 +13,7 @@ import { createHash } from 'crypto';
 import { io, Socket } from 'socket.io-client';
 import type { J41Agent } from '../agent.js';
 import { RECONNECT_CONFIG } from '../chat/reconnect-config.js';
+import { getEgressSocketAgent } from '../net/egress-agent.js';
 
 // ── Constants (match j41-jailbox) ──────────────────────────────
 
@@ -216,10 +217,11 @@ export class BuyerWorkspace {
 
       this.socket = io(apiUrl + '/jailbox', {
         path: '/ws',
+        agent: getEgressSocketAgent(),
         auth: { type: 'buyer', uid },
         transports: ['websocket', 'polling'],
         ...RECONNECT_CONFIG,
-      });
+      } as any);
 
       this.socket.on('connect', () => {
         this._connected = true;
