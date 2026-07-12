@@ -10,6 +10,7 @@ import * as utxolib from '@bitgo/utxo-lib';
 import { Identity, IdentityScript } from 'verus-typescript-primitives';
 
 import type { RawIdentityData, Utxo } from '../client/index.js';
+import { assertContentmultimapValueSizes } from '../onboarding/vdxf.js';
 
 const DEFAULT_FEE = 10000; // 0.0001 VRSC in satoshis
 const SATS_PER_COIN = 100000000;
@@ -107,6 +108,11 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
       currentCmm[key] = Array.isArray(values) ? [...values] : [values];
     }
   }
+
+  // Fail loud if any new value would silently truncate on-chain (>~5.5KB script
+  // element) — e.g. too many/large services serialized into one entry. Guard the
+  // ADDITIONS only; existing on-chain values already fit (they were stored).
+  assertContentmultimapValueSizes(vdxfAdditions);
 
   // Apply VDXF data (replace existing keys, add new ones)
   for (const [key, values] of Object.entries(vdxfAdditions)) {

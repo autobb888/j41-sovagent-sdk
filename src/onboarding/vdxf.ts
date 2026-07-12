@@ -181,6 +181,54 @@ function parseOuterDD(entry: unknown, reverseLookup: Record<string, string>): Re
   return record;
 }
 
+// --- Contentmultimap size guard ---
+//
+// On-chain, a contentmultimap script element is capped (~6KB,
+// MAX_SCRIPT_ELEMENT_SIZE_PBAAS) and a raw contentmultimap value past ~5.5KB is
+// SILENTLY truncated — no RPC error. Since makeSubDD stores each value as a
+// single DataDescriptor (no createmmr/BreakApart auto-chunking), an oversized
+// value (e.g. many/large services serialized into one entry) would be silently
+// corrupted on-chain. We refuse to sign well under the limit so it fails loudly.
+
+export const MAX_CONTENTMULTIMAP_VALUE_BYTES = 5000;
+
+/** Byte size of a single contentmultimap value's on-chain payload. */
+export function contentmultimapValueByteSize(value: unknown): number {
+  if (value && typeof value === 'object') {
+    const dd = (value as Record<string, any>)[DATA_DESCRIPTOR_KEY];
+    if (dd && dd.objectdata != null) {
+      const od = dd.objectdata;
+      if (typeof od === 'object' && od !== null && typeof (od as any).message === 'string') {
+        return Buffer.byteLength((od as any).message, 'utf8');
+      }
+      if (typeof od === 'string') return Math.ceil(od.length / 2); // hex → bytes
+    }
+    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+  }
+  if (typeof value === 'string') {
+    return /^[0-9a-fA-F]+$/.test(value) && value.length % 2 === 0
+      ? value.length / 2
+      : Buffer.byteLength(value, 'utf8');
+  }
+  return Buffer.byteLength(JSON.stringify(value ?? ''), 'utf8');
+}
+
+/** Throw a clear, actionable error if any contentmultimap value would silently truncate on-chain. */
+export function assertContentmultimapValueSizes(cmm: Record<string, unknown[]>): void {
+  for (const [key, values] of Object.entries(cmm)) {
+    const arr = Array.isArray(values) ? values : [values];
+    for (let i = 0; i < arr.length; i++) {
+      const size = contentmultimapValueByteSize(arr[i]);
+      if (size > MAX_CONTENTMULTIMAP_VALUE_BYTES) {
+        const idx = arr.length > 1 ? `[${i}]` : '';
+        throw new Error(
+          `contentmultimap value for key ${key}${idx} is ${size} bytes, over the ${MAX_CONTENTMULTIMAP_VALUE_BYTES}-byte on-chain limit — it would be silently truncated. Reduce the data (e.g. fewer or shorter services) or split it across multiple entries.`,
+        );
+      }
+    }
+  }
+}
+
 // --- Legacy helpers (kept for backwards compat during transition) ---
 
 export function encodeVdxfValue(value: unknown): string {
