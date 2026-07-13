@@ -24,12 +24,24 @@ const P = mod.default ?? mod;
 // (src/__tests__/vdxf/ordinalvdxfobject.test.ts, TEST_REQUESTID-adjacent literal).
 const TEST_REQUEST_ID = 'iD4CrjbJBZmwEZQ4bCWgbHx9tBHGP9mdSQ';
 
+// Two incompatible builds of verus-typescript-primitives are in play, and this
+// fixture has to run on both — box 2 installs the real pin, while some checkouts
+// still carry a stale build from before the rename:
+//   real pin: field is `pkD`; the constructor THROWS on a `pk_d` key, and `pk_d`
+//             survives only as a deprecated getter (no setter — assigning throws).
+//   stale:    field is `pk_d`; a `pkD` constructor key is silently DROPPED, so the
+//             address serializes as undefined and dies deep inside toBuffer().
+// Neither constructor key works on both. Detect by the deprecated getter and assign
+// the field directly. `sapling.mjs` (the production path) reads `pkD ?? pk_d`.
+const IS_REAL_PIN = !!Object.getOwnPropertyDescriptor(P.SaplingPaymentAddress.prototype, 'pk_d')?.get;
+const pkdOf = (addr) => addr.pkD ?? addr.pk_d;
+
 function buildSaplingAddress() {
-  // pkD, not pk_d: the real pinned verus-typescript-primitives build throws on the
-  // snake_case constructor key ("Use 'pkD' instead of 'pk_d'"). A stale local
-  // node_modules may still accept pk_d, which is exactly why this fixture must not
-  // use it — a green run here would prove nothing against the real pin.
-  return new P.SaplingPaymentAddress({ d: randomBytes(11), pkD: randomBytes(32) });
+  const addr = new P.SaplingPaymentAddress();
+  addr.d = randomBytes(11);
+  if (IS_REAL_PIN) addr.pkD = randomBytes(32);
+  else addr.pk_d = randomBytes(32);
+  return addr;
 }
 
 function buildExtendedViewingKey() {
@@ -152,7 +164,7 @@ function buildExtendedSpendingKey() {
 
   const out = await unwrapAppEncryptionResponse(plaintextBuf);
 
-  const expectedAddr = Buffer.concat([address.d, address.pkD]);
+  const expectedAddr = Buffer.concat([address.d, pkdOf(address)]);
   assert.equal(Buffer.from(out.addressHex, 'hex').length, 43, 'address is 43 raw bytes');
   assert.equal(out.addressHex, expectedAddr.toString('hex'), 'address bytes round-trip (d || pkD, in order)');
   assert.equal(Buffer.from(out.ivkHex, 'hex').length, 32, 'ivk is 32 raw bytes');
