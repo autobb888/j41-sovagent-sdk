@@ -122,11 +122,15 @@ export async function unwrapAppEncryptionResponse(plaintextBuf) {
   const resp = new P.AppEncryptionResponseDetails();
   resp.fromBuffer(entry[key].objectdata);
 
-  // NOTE: verus-typescript-primitives' SaplingPaymentAddress exposes `d` / `pk_d`
-  // (snake_case), not `pkD` as the original brief assumed — confirmed by reading
-  // dist/pbaas/SaplingPaymentAddress.d.ts. `pkD` is undefined on the real class and
-  // would have silently truncated the address to 11 bytes.
-  const addr = Buffer.concat([resp.address.d, resp.address.pk_d]);
+  // NOTE: this repo's local node_modules (stale) exposes only `pk_d` (snake_case) on
+  // SaplingPaymentAddress. The real pinned commit exposes `pkD` as the live field with
+  // `pk_d` kept only as a `/** @deprecated */` getter for back-compat. Reading `.pk_d`
+  // works today on both builds, but if that deprecated getter is ever dropped upstream,
+  // `resp.address.pk_d` would silently become `undefined` and
+  // `Buffer.concat([resp.address.d, undefined])` throws an opaque TypeError instead of
+  // anything diagnosable. `pkD ?? pk_d` is forward- and backward-compatible — do not
+  // "simplify" this back to a single field access.
+  const addr = Buffer.concat([resp.address.d, resp.address.pkD ?? resp.address.pk_d]);
   return {
     addressHex: addr.toString('hex'),
     ivkHex: Buffer.from(resp.incomingViewingKey).toString('hex'),
