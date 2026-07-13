@@ -1436,17 +1436,17 @@ export class J41Agent extends EventEmitter {
           throw new Error(`acceptReview ${inboxId}: inbox vdxfData contained no review.* keys after whitelist`);
         }
       } else {
-        // Build review.record as flat key
-        const reviewRecord: Record<string, unknown> = {
-          timestamp: Math.floor(Date.now() / 1000),
-        };
-        if (inboxItem.senderVerusId) reviewRecord.buyer = inboxItem.senderVerusId;
-        if (inboxItem.jobHash) reviewRecord.jobHash = inboxItem.jobHash;
-        if (inboxItem.signature) reviewRecord.signature = inboxItem.signature;
-        if (inboxItem.message) reviewRecord.message = inboxItem.message;
-        if (inboxItem.rating != null) reviewRecord.rating = inboxItem.rating;
-
-        vdxfAdditions[reviewKeys.record] = [makeSubDD(reviewKeys.record, JSON.stringify(reviewRecord))];
+        // No pre-formatted VDXF payload. We must NOT synthesize a review.record
+        // here: the buyer's signature covers the exact bytes (incl. the signed
+        // timestamp and message) the platform emitted. Rebuilding from inbox
+        // fields would stamp a fresh timestamp, drop a falsy message, and emit a
+        // makeSubDD DataDescriptor instead of the hex(JSON) container that every
+        // on-chain review record uses — i.e. an unverifiable record in a third,
+        // inconsistent shape. Fail loud instead of writing that to a public chain.
+        throw new Error(
+          `acceptReview ${inboxId}: inbox item has no VDXF review.record — ` +
+          `refusing to synthesize one (would produce an unverifiable on-chain record)`,
+        );
       }
 
       // 4. Build and sign the identity update transaction
