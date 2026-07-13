@@ -23,6 +23,7 @@ import { buildDisputeRespondMessage, buildReworkAcceptMessage, buildPostBountyMe
 import { assertConsentChallengeHash } from './auth/challenge-hash.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
+import { MAX_ACCEPT_ATTEMPTS, recordAcceptFailure, clearAcceptFailure, pruneAcceptFailures } from './jobs/accept-retry.js';
 import type { Job, RegisterServiceData } from './client/index.js';
 import type { SessionInput, AgentProfileInput } from './onboarding/finalize.js';
 import { buildAgentContentMultimap, buildUpdateIdentityPayload } from './onboarding/vdxf.js';
@@ -137,6 +138,8 @@ export class J41Agent extends EventEmitter {
   private canaryConfig: CanaryConfig | null = null;
   private polling = false;
   private seenJobIds = new Set<string>();
+  /** Per-job consecutive accept-failure counter — see `jobs/accept-retry.ts`. */
+  private acceptFailures = new Map<string, number>();
   private loginPromise: Promise<string> | null = null;
 
   constructor(config: J41AgentConfig) {
@@ -1687,7 +1690,18 @@ export class J41Agent extends EventEmitter {
               }
               try {
                 if (!job.jobHash) {
-                  this.emit('error', new Error(`Cannot accept job ${job.id}: missing jobHash`));
+                  // Same never-marked-seen shape as the accept failure below: a
+                  // malformed job with no jobHash can never be accepted, so
+                  // without bounding it'd be re-emitted as an error on every
+                  // poll forever. Bound it through the same counter.
+                  const { attempts, giveUp } = recordAcceptFailure(this.acceptFailures, job.id, MAX_ACCEPT_ATTEMPTS);
+                  if (giveUp) {
+                    this.seenJobIds.add(job.id);
+                    clearAcceptFailure(this.acceptFailures, job.id);
+                    this.emit('error', new Error(`Job ${job.id} abandoned after ${attempts} failed accept attempts: missing jobHash`));
+                  } else {
+                    this.emit('error', new Error(`Cannot accept job ${job.id}: missing jobHash (attempt ${attempts}/${MAX_ACCEPT_ATTEMPTS})`));
+                  }
                   continue;
                 }
                 const brokered = await this._signBrokered(
@@ -1701,23 +1715,39 @@ export class J41Agent extends EventEmitter {
                 );
                 await this._client.acceptJob(job.id, brokered.signature, brokered.timestamp);
                 this.seenJobIds.add(job.id);
+                clearAcceptFailure(this.acceptFailures, job.id);
                 this.emit('job:accepted', job);
                 // Auto-join chat room if chat is connected
                 if (this.chatClient?.isConnected) {
                   this.chatClient.joinJob(job.id);
                 }
               } catch (err) {
-                // Don't mark as seen on failure — allow retry on next poll
-                this.emit('error', new Error(`Failed to accept job ${job.id}: ${err instanceof Error ? err.message : String(err)}`));
+                // Bounded retry (was: never marked as seen — retried forever).
+                // Below MAX_ACCEPT_ATTEMPTS: keep the old behavior, retry next
+                // poll. At the cap: give up loudly — mark seen so it stops
+                // being retried, and emit a DISTINCT terminal error (message
+                // says "abandoned") so an operator listener can tell this
+                // apart from a routine per-attempt failure.
+                const message = err instanceof Error ? err.message : String(err);
+                const { attempts, giveUp } = recordAcceptFailure(this.acceptFailures, job.id, MAX_ACCEPT_ATTEMPTS);
+                if (giveUp) {
+                  this.seenJobIds.add(job.id);
+                  clearAcceptFailure(this.acceptFailures, job.id);
+                  this.emit('error', new Error(`Job ${job.id} abandoned after ${attempts} failed accept attempts: ${message}`));
+                } else {
+                  this.emit('error', new Error(`Failed to accept job ${job.id} (attempt ${attempts}/${MAX_ACCEPT_ATTEMPTS}): ${message}`));
+                }
               }
             } else if (decision === 'reject') {
               this.seenJobIds.add(job.id);
+              clearAcceptFailure(this.acceptFailures, job.id);
               this.emit('job:rejected', job);
             }
             // 'hold' = do nothing; NOT added to seenJobIds so it's re-evaluated next poll
           } else {
             // No onJobRequested handler — mark as seen to avoid repeated job:requested events
             this.seenJobIds.add(job.id);
+            clearAcceptFailure(this.acceptFailures, job.id);
           }
         } catch (jobErr) {
           // Per-job error: don't skip remaining jobs in batch
@@ -1731,6 +1761,14 @@ export class J41Agent extends EventEmitter {
         if (first !== undefined) this.seenJobIds.delete(first);
         else break;
       }
+
+      // Drop failure counters for jobs no longer in this poll's pending set
+      // (accepted elsewhere, expired, cancelled) so acceptFailures can't grow
+      // unbounded across the agent's lifetime. Built from the full fetched
+      // response (allJobs), not the per-poll-truncated `jobs`, so a job just
+      // beyond MAX_PER_POLL this cycle isn't wrongly forgotten.
+      const stillPendingIds = new Set(allJobs.map((j) => j.id).filter((id): id is string => !!id));
+      pruneAcceptFailures(this.acceptFailures, stillPendingIds);
     } catch (error) {
       this.emit('error', error instanceof Error ? error : new Error(String(error)));
     } finally {
