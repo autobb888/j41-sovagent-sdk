@@ -6,3 +6,5 @@ dist/
 *.wif
 *.log
 .DS_Store
+spike/encrypted-delivery/.state.json
+spike/encrypted-delivery/qr.png
