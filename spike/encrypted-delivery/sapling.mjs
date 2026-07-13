@@ -15,11 +15,16 @@
  * split cannot cause a wrong-chain parse.
  */
 import { randomBytes } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+// Resolve the library from THIS FILE's location, not process.cwd(): the harness
+// gets run from wherever the operator happens to be standing, and a cwd-relative
+// default silently breaks the moment you cd into spike/encrypted-delivery/.
+// (…/j41-sovagent-sdk/spike/encrypted-delivery → ../../.. → the repos' parent dir.)
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB_PATH = process.env.ZSUPPORT_LIB
-  ?? path.resolve(process.cwd(), '../spike-veruscryptolib/dist/index.es.js');
+  ?? path.resolve(HERE, '../../../spike-veruscryptolib/dist/index.es.js');
 
 let _z;
 async function zlib() {
