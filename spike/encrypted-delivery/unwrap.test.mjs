@@ -25,7 +25,11 @@ const P = mod.default ?? mod;
 const TEST_REQUEST_ID = 'iD4CrjbJBZmwEZQ4bCWgbHx9tBHGP9mdSQ';
 
 function buildSaplingAddress() {
-  return new P.SaplingPaymentAddress({ d: randomBytes(11), pk_d: randomBytes(32) });
+  // pkD, not pk_d: the real pinned verus-typescript-primitives build throws on the
+  // snake_case constructor key ("Use 'pkD' instead of 'pk_d'"). A stale local
+  // node_modules may still accept pk_d, which is exactly why this fixture must not
+  // use it — a green run here would prove nothing against the real pin.
+  return new P.SaplingPaymentAddress({ d: randomBytes(11), pkD: randomBytes(32) });
 }
 
 function buildExtendedViewingKey() {
@@ -148,9 +152,9 @@ function buildExtendedSpendingKey() {
 
   const out = await unwrapAppEncryptionResponse(plaintextBuf);
 
-  const expectedAddr = Buffer.concat([address.d, address.pk_d]);
+  const expectedAddr = Buffer.concat([address.d, address.pkD]);
   assert.equal(Buffer.from(out.addressHex, 'hex').length, 43, 'address is 43 raw bytes');
-  assert.equal(out.addressHex, expectedAddr.toString('hex'), 'address bytes round-trip (d || pk_d, in order)');
+  assert.equal(out.addressHex, expectedAddr.toString('hex'), 'address bytes round-trip (d || pkD, in order)');
   assert.equal(Buffer.from(out.ivkHex, 'hex').length, 32, 'ivk is 32 raw bytes');
   assert.equal(out.ivkHex, incomingViewingKey.toString('hex'), 'ivk round-trips');
   assert.equal(out.requestId, requestID.toIAddress(), 'requestId round-trips');

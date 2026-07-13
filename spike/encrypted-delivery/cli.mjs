@@ -37,7 +37,14 @@ const STATE = path.join(HERE, '.state.json');
 const API = process.env.API ?? 'https://api.junction41.io';
 
 const load = () => (fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : {});
-const save = (s) => fs.writeFileSync(STATE, JSON.stringify(s, null, 2));
+// .state.json holds the buyer's derived ivk, which decrypts every future delivery to
+// that address — it must never be world-readable. writeFileSync's `mode` option is only
+// honored when the file is *created*; on an existing file it's silently ignored, so we
+// chmod explicitly every time regardless of whether this call created or overwrote it.
+const save = (s) => {
+  fs.writeFileSync(STATE, JSON.stringify(s, null, 2), { mode: 0o600 });
+  fs.chmodSync(STATE, 0o600);
+};
 const need = (s, k, hint) => {
   if (!s[k]) { console.error(`Missing ${k}. Run: node cli.mjs ${hint}`); process.exit(1); }
   return s[k];
@@ -57,7 +64,18 @@ function requireToken() {
   return token;
 }
 
-/** Known backend error codes (see README.md "Troubleshooting" for the full cheatsheet). */
+/**
+ * Known backend error codes (see README.md "Troubleshooting" for the full cheatsheet).
+ *
+ * Two different delivery paths land here:
+ *  - Most of these come straight back as the HTTP response to a `request`/`fetch` call
+ *    (explainError reads them off the JSON body directly).
+ *  - The wallet-callback codes (SIGNER_MISMATCH, PLAINTEXT_KEY_RESPONSE,
+ *    DISALLOWED_DETAIL_TYPE, INVALID_SIGNATURE, INVALID_RESPONSE) are never an HTTP
+ *    response *to this CLI* — the wallet is the one that POSTs the callback and sees
+ *    that status. They reach us secondhand via `lastError` on the polled row (see the
+ *    `fetch` handler below) and are looked up in this same table.
+ */
 const ERROR_NOTES = {
   SIGNER_MISMATCH:
     "The most likely first-scan failure, and NOT an attack: the user picked a different\n" +
@@ -69,17 +87,41 @@ const ERROR_NOTES = {
   DISALLOWED_DETAIL_TYPE:
     "The wallet attached a detail type not on the server's allow-list. The ordinal is in\n" +
     '  the server log — ask the operator to check.',
+  INVALID_SIGNATURE:
+    "The wallet's envelope signature didn't verify — a wrong/stale signing key, a corrupted\n" +
+    '  response, or a replay of an old challenge. Re-mint with `request` and scan fresh; if\n' +
+    "  it keeps happening, that's a wallet-side signing bug, not a CLI bug.",
   INVALID_RESPONSE: "The response didn't parse at all. Rule of thumb: 400 = parse, 422 = policy.",
+  INVALID_REQUEST:
+    "Our own POST body failed validation — most likely `encryptToAddressHex` is not valid\n" +
+    '  hex. This is a client-side bug in the CLI, not a wallet or operator problem.',
+  UNKNOWN_REQUEST:
+    "This challengeId is not one the backend knows about — either it's stale (a\n" +
+    '  .state.json left over from a different backend/environment) or the row already\n' +
+    '  expired and was swept. Run `node cli.mjs request <verusid>` again.',
+  REQUEST_EXPIRED:
+    'The request window closed before the wallet answered. Run `node cli.mjs request\n' +
+    '  <verusid>` again and scan promptly — see README.md for the current window length.',
   ENCRYPTION_DISABLED:
-    'The operator has not set ENCRYPTION_SPIKE_TOKEN on the backend. This is a server-side\n' +
-    '  config gap, not something the CLI can fix — hand this back to the operator.',
+    'The operator has not set ENCRYPTION_SPIKE_TOKEN on the backend — or set one shorter\n' +
+    '  than 32 characters, which the backend treats as equivalent to unset (fail-closed).\n' +
+    '  Server-side config gap either way, not something the CLI can fix — hand this back to\n' +
+    '  the operator.',
   UNAUTHORIZED:
     'ENCRYPTION_SPIKE_TOKEN is missing or does not match what the operator set on the\n' +
     '  backend. Double check the exported value.',
-  INVALID_SIGNER: 'expectedSigner does not look like a valid i-address or friendly name.',
   UNKNOWN_SIGNER:
     'expectedSigner could not be resolved to an identity on-chain. Check spelling — friendly\n' +
     '  names need the trailing @, e.g. gg.agentplatform@.',
+  CHAIN_SYNCING:
+    "The backend's Verus daemon is behind chain tip and refusing to serve requests that\n" +
+    '  need a synced view. NOT a token/config problem — wait for it to catch up and retry.\n' +
+    '  On this deployment a memory watchdog periodically pauses the testnet daemon and the\n' +
+    '  testnet node has a daily shutoff window; both self-heal without operator action.',
+  RPC_UNAVAILABLE:
+    "The backend can't reach its Verus daemon at all (stopped, restarting, or network\n" +
+    '  issue). Also NOT a token/config problem — wait and retry; ask the operator if it\n' +
+    '  persists past a few minutes.',
 };
 
 async function explainError(res) {
@@ -93,7 +135,9 @@ async function explainError(res) {
   if (code && ERROR_NOTES[code]) {
     console.error(`  ${ERROR_NOTES[code]}`);
   } else if (res.status === 503) {
-    console.error('  503 usually means ENCRYPTION_SPIKE_TOKEN is unset on the backend.');
+    console.error('  503 without a recognized code — most likely CHAIN_SYNCING or');
+    console.error('  RPC_UNAVAILABLE (daemon lag/outage; wait and retry), or ENCRYPTION_DISABLED');
+    console.error('  (missing/weak token). NOT necessarily a token problem — check the code above.');
   }
   process.exit(1);
 }
@@ -113,8 +157,11 @@ if (cmd === 'keygen') {
   const eph = need(s, 'ephemeral', 'keygen');
 
   const argSigner = process.argv[3];
-  const expectedSigner = argSigner ?? s.expectedSigner;
-  if (!expectedSigner) {
+  // What the operator typed — usually a friendly name (e.g. gg.agentplatform@). Kept
+  // around only for display and as a re-mint default; it is NEVER what we compare
+  // against in `fetch` (see below).
+  const expectedSignerInput = argSigner ?? s.expectedSignerInput ?? s.expectedSigner;
+  if (!expectedSignerInput) {
     console.error('Missing expectedSigner. Usage: node cli.mjs request <verusid>');
     console.error('  <verusid> is the identity YOU will sign with in Valu (i-address or');
     console.error('  friendly name, e.g. gg.agentplatform@). The server rejects a callback');
@@ -127,24 +174,46 @@ if (cmd === 'keygen') {
   const res = await fetch(`${API}/v1/encryption/keyreq`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify({ encryptToAddressHex: eph.addressHex, derivationNumber: 0, expectedSigner }),
+    body: JSON.stringify({
+      encryptToAddressHex: eph.addressHex,
+      derivationNumber: 0,
+      expectedSigner: expectedSignerInput,
+    }),
   });
   if (!res.ok) { console.error('Mint failed:'); await explainError(res); }
-  const { challengeId, deeplink, qrDataUrl, expiresAt } = await res.json();
+  // expectedSigner here (if present) is the backend's RESOLVED i-address for whatever
+  // we sent above — not an echo of our input. The backend always reports the signer on
+  // the answered row as an i-address too, so this is what `fetch` must compare against
+  // for a like-for-like check. Older backends that don't echo this field yet fall back
+  // to comparing against the raw input, which reproduces the original bug for friendly
+  // names — flagged loudly below rather than silently.
+  const { challengeId, deeplink, qrDataUrl, expiresAt, expectedSigner: resolvedSigner } = await res.json();
 
   const png = path.join(HERE, 'qr.png');
   fs.writeFileSync(png, Buffer.from(qrDataUrl.split(',')[1], 'base64'));
-  save({ ...s, expectedSigner, challengeId });
+  save({
+    ...s,
+    expectedSignerInput,
+    expectedSigner: resolvedSigner ?? expectedSignerInput,
+    challengeId,
+  });
 
   console.log(`Request minted: ${challengeId}`);
-  console.log(`  expected signer: ${expectedSigner}`);
+  console.log(`  you typed:       ${expectedSignerInput}`);
+  if (resolvedSigner) {
+    console.log(`  resolved signer: ${resolvedSigner}`);
+  } else {
+    console.log('  resolved signer: (backend did not echo one — comparing against raw input in');
+    console.log('    `fetch`; if you typed a friendly name, that compare can spuriously FAIL even');
+    console.log('    on a correct scan — see README.md "Known gaps".)');
+  }
   if (expiresAt) console.log(`  expires: ${new Date(expiresAt).toISOString()}`);
   console.log(`\nScan this with Valu:  ${png}`);
   console.log(`Or paste the deeplink:\n  ${deeplink}`);
   console.log('\nPrerequisite: a Z Seed must be set up for VRSCTEST (Settings → Profile),');
   console.log('or the wallet will refuse the request outright.');
   console.log('\nIMPORTANT: in Valu, sign with the SAME identity passed above');
-  console.log(`(${expectedSigner}). Signing with any other identity gets 403 SIGNER_MISMATCH.`);
+  console.log(`(${expectedSignerInput}). Signing with any other identity gets 403 SIGNER_MISMATCH.`);
   console.log('\nAfter approving in the wallet:  node cli.mjs fetch');
 
 } else if (cmd === 'fetch') {
@@ -160,6 +229,24 @@ if (cmd === 'keygen') {
   const row = await res.json();
 
   if (row.status !== 'answered' || !row.responseBlob) {
+    // A pending row and a REJECTED row look identical unless we surface `lastError`:
+    // both report `status: pending` with no responseBlob. Without this check, a wallet
+    // that scanned, answered, and got 403 SIGNER_MISMATCH prints the exact same message
+    // as a QR nobody has scanned yet — the operator has no way to tell "not yet" from
+    // "tried and failed" and burns a full debugging cycle finding out which.
+    if (row.lastError) {
+      const when = row.lastErrorAt ? ` at ${new Date(row.lastErrorAt).toISOString()}` : '';
+      console.error(`Status: ${row.status} — but the wallet DID answer${when}, and was REJECTED.`);
+      console.error(`  code: ${row.lastError}`);
+      if (ERROR_NOTES[row.lastError]) {
+        console.error(`  ${ERROR_NOTES[row.lastError]}`);
+      } else {
+        console.error('  (no local note for this code — see README.md error-code cheatsheet.)');
+      }
+      console.error('\nThis is NOT "never scanned" — re-mint with `node cli.mjs request <verusid>`');
+      console.error('after addressing the cause above, then scan again.');
+      process.exit(1);
+    }
     console.log(`Status: ${row.status} — the wallet has not answered yet. Scan the QR, then retry.`);
     process.exit(0);
   }
@@ -167,7 +254,10 @@ if (cmd === 'keygen') {
   if (s.expectedSigner && row.signer !== s.expectedSigner) {
     // Belt-and-suspenders: the server already enforces this (403 SIGNER_MISMATCH on the
     // callback), so an answered+stored row should never disagree. Flag it anyway rather
-    // than silently trusting a mismatch.
+    // than silently trusting a mismatch. Like-for-like ONLY if `s.expectedSigner` is the
+    // resolved i-address the mint stored (see `request`) — `row.signer` is always an
+    // i-address, so comparing it against a still-unresolved friendly name here would be
+    // a false FAIL on a genuinely correct scan, not a real mismatch.
     console.error(`  ✗ FAIL: stored signer (${row.signer}) != expected (${s.expectedSigner})`);
     process.exit(1);
   }
