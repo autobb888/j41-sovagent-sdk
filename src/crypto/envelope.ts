@@ -183,17 +183,115 @@ export function mintAccessEnvelope(
 }
 
 /**
- * Open an encrypted access envelope (buyer side).
+ * Verification context required to open an access envelope.
  *
- * Uses the buyer's ephemeral private key to derive the same ECDH shared
- * secret, then decrypts the AES-256-GCM payload.
+ * Opening ALWAYS authenticates the envelope against the *expected* seller before
+ * it will decrypt. J41 is only a semi-trusted relay: it sees the buyer's
+ * plaintext `ephemeralPubKey` in the AccessRequest, so it can compute the very
+ * same ECDH key and mint its OWN envelope (its pubkey in `dispatcherEphPub`, its
+ * signature) whose ciphertext decrypts perfectly. Confidentiality alone does not
+ * bind the payload (`apiKey` + `endpointUrl`) to the seller the buyer chose — the
+ * dispatcher signature over the seller's on-chain R-address is the only thing that
+ * does. So the open path checks it first and fails closed.
+ */
+export interface OpenVerifyContext {
+  /**
+   * Authenticated J41 client (or any resolver exposing `getIdentityKeys`/`getAgent`).
+   * Used to resolve the seller's on-chain primary R-addresses to verify against.
+   */
+  client: {
+    getAgent(verusId: string): Promise<any>;
+    getIdentityKeys?(idOrName: string): Promise<{ primaryAddresses?: string[]; minimumSignatures?: number }>;
+  };
+  /**
+   * The seller VerusID the buyer requested access from. The envelope MUST carry a
+   * signature that verifies against this identity's on-chain R-addresses.
+   */
+  sellerVerusId: string;
+  /** 'verus' or 'verustest' (default 'verustest'). */
+  network?: 'verus' | 'verustest';
+  /** Freshness/expiry/replay options forwarded to `verifyAccessEnvelope`. */
+  verifyOpts?: AccessVerifyOptions;
+}
+
+/**
+ * Open an encrypted access envelope (buyer side) — AUTHENTICATE, then decrypt.
  *
- * @param envelope - The AccessEnvelope from the dispatcher
+ * Verifies the dispatcher/seller signature against the expected seller's on-chain
+ * R-addresses BEFORE decrypting, and throws (fail-closed) if it does not match, so
+ * a forged envelope minted by a MITM relay is rejected instead of yielding an
+ * attacker-controlled `apiKey`/`endpointUrl`. Only after authenticity is
+ * established does it run the ECDH + AES-256-GCM decrypt.
+ *
+ * There is NO silent unverified fallback: a caller that omits the verification
+ * context throws. Anyone who genuinely wants a decoupled two-step can call
+ * {@link verifyAccessEnvelope} explicitly — but the open path always enforces it.
+ *
+ * @param envelope - The AccessEnvelope from the dispatcher (via J41 relay)
  * @param ephPrivKey - Buyer's ephemeral private key (from generateEphemeralKeypair)
  * @param nonce - The nonce from the original AccessRequest (hex, 32 chars / 16 bytes).
  *               MUST be the same nonce returned by buildAccessRequest().
+ * @param verify - Verification context: the client + the seller VerusID the buyer
+ *               requested access from. Mandatory — the envelope is authenticated
+ *               against this seller before any plaintext is returned.
  */
-export function openAccessEnvelope(
+export async function openAccessEnvelope(
+  envelope: AccessEnvelope,
+  ephPrivKey: Uint8Array,
+  nonce: string,
+  verify: OpenVerifyContext,
+): Promise<AccessPayload> {
+  // Fail closed if no verification context is supplied. Earlier SDK versions
+  // exposed a 3-arg synchronous form that decrypted WITHOUT authenticating the
+  // seller — that path is removed because a semi-trusted relay can forge an
+  // envelope that still decrypts. There is deliberately no insecure fallback.
+  if (!verify || typeof verify !== 'object' || !verify.client || !verify.sellerVerusId) {
+    throw new Error(
+      'openAccessEnvelope requires a verification context { client, sellerVerusId }: ' +
+      'the envelope MUST be authenticated against the expected seller before it is ' +
+      'decrypted. Pass the authenticated J41Client and the seller VerusID you ' +
+      'requested access from.',
+    );
+  }
+
+  // Authenticity FIRST — refuse to decrypt anything the expected seller did not
+  // sign. verifyAccessEnvelope also enforces expiry + clock-skew on the signed
+  // fields, and resolves the seller's R-addresses via the platform-signer-pinned
+  // getIdentityKeys path when available.
+  const authentic = await verifyAccessEnvelope(
+    envelope,
+    verify.client,
+    verify.sellerVerusId,
+    verify.network ?? 'verustest',
+    verify.verifyOpts,
+  );
+  if (!authentic) {
+    throw new Error(
+      `Access envelope failed signature verification against the expected seller ` +
+      `(${verify.sellerVerusId}) — refusing to decrypt. A relay may have forged this ` +
+      `envelope (MITM); the decrypted apiKey/endpointUrl cannot be trusted.`,
+    );
+  }
+
+  return decryptEnvelope(envelope, ephPrivKey, nonce);
+}
+
+/**
+ * Explicit, self-documenting alias for {@link openAccessEnvelope} — the
+ * verify-then-decrypt open path. Same behaviour; exported so integrators can make
+ * the security intent obvious at the call site.
+ */
+export const openVerifiedAccessEnvelope = openAccessEnvelope;
+
+/**
+ * Raw ECDH + AES-256-GCM decrypt of an envelope — NO authenticity check.
+ *
+ * INTERNAL ONLY, intentionally NOT exported: every caller must go through
+ * {@link openAccessEnvelope}, which authenticates the seller signature first
+ * (fail-closed) so a forged relay envelope cannot be silently decrypted. Keeping
+ * this un-exported is what removes the footgun.
+ */
+function decryptEnvelope(
   envelope: AccessEnvelope,
   ephPrivKey: Uint8Array,
   nonce: string,

@@ -412,13 +412,20 @@ const seller = providers.data[0];
 
 // 2. Build access request (ECDH ephemeral keypair + signed envelope)
 const eph = generateEphemeralKeypair();
-const accessRequest = buildAccessRequest(buyerWif, seller.iaddress, eph.pubKeyHex, network);
+const accessRequest = buildAccessRequest(buyerWif, seller.iaddress, eph.publicKey, network);
 
 // 3. Request access — backend forwards to seller's dispatcher, returns encrypted envelope
 const envelope = await client.requestApiAccess(seller.iaddress, accessRequest);
 
-// 4. Decrypt envelope to get endpointUrl + apiKey
-const grant = openAccessEnvelope(envelope, eph.privKeyHex, envelope.nonce);
+// 4. AUTHENTICATE the seller's signature, THEN decrypt to get endpointUrl + apiKey.
+//    J41 is only a semi-trusted relay: passing { client, sellerVerusId } makes the
+//    open path reject a forged envelope (fail-closed) instead of trusting an
+//    attacker-supplied apiKey/endpointUrl. There is no unverified fallback.
+const grant = await openAccessEnvelope(envelope, eph.privateKey, accessRequest.nonce, {
+  client,
+  sellerVerusId: seller.iaddress,
+  network,
+});
 // grant: { endpointUrl, apiKey, expiresAt, sessionId }
 
 // 5. Call the proxied API — OpenAI-compatible

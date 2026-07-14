@@ -229,11 +229,12 @@ export {
   buildAccessRequest,
   mintAccessEnvelope,
   openAccessEnvelope,
+  openVerifiedAccessEnvelope,
   verifyAccessEnvelope,
   verifyAccessRequest,
 } from './crypto/envelope.js';
 
-export type { AccessVerifyOptions } from './crypto/envelope.js';
+export type { AccessVerifyOptions, OpenVerifyContext } from './crypto/envelope.js';
 
 export type {
   AccessRequest,
