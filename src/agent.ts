@@ -1417,7 +1417,7 @@ export class J41Agent extends EventEmitter {
       // VDXF key in inboxItem.vdxfData — including agent.payAddress — and
       // we'd write attacker-controlled data to our on-chain identity. The
       // allowlist is the set of i-addresses under VDXF_KEYS.review.
-      const reviewAllowedIaddrs: Set<string> = new Set(Object.values(reviewKeys));
+      const reviewAllowedIaddrs: Set<string> = new Set([VDXF_KEYS.review.record]);
 
       // Check if vdxfData is already formatted (flat or legacy)
       if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {

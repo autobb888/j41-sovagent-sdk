@@ -99,4 +99,15 @@ describe('acceptReview on-chain shape safety', () => {
     await assert.rejects(agent.acceptReview('r4'), /SENTINEL_REACHED_TX_BUILD/);
     assert.strictEqual(calls.getChainInfo, 1, 'review.record accepted → reached tx build');
   });
+
+  it('H8: acceptReview drops review.attestation (only review.record is allowed here)', async () => {
+    const ATTESTATION_IADDR = VDXF_KEYS.review.attestation;
+    const { agent, calls } = makeAgent({
+      id: 'r5', status: 'pending', senderVerusId: 'buyer.vrsc@', jobHash: 'jh5',
+      rating: 5, message: 'x',
+      vdxfData: { [ATTESTATION_IADDR]: ['deadbeef'] },
+    });
+    await assert.rejects(agent.acceptReview('r5'), /contained no review\.\* keys after whitelist/);
+    assert.strictEqual(calls.broadcast, 0, 'must not write attestation via acceptReview');
+  });
 });
