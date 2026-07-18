@@ -62,9 +62,10 @@ export const VDXF_KEYS = {
   service: {
     schema:  'i4D2ifpAG7BYnfJZGVT1Tph7BMkp9qZPyS',  // agentplatform::svc.schema
   },
-  // 1 review key
+  // 1 review namespace: record + attestation
   review: {
     record: 'iLbUN8TFvMZR9uaZYY1qBmL99bJE2uYdad',   // agentplatform::review.record
+    attestation: 'i76fJX1DreN81CoRVJHSkrcqHq9nsLomYv', // agentplatform::review.attestation (published testnet tx d8f57a4b)
   },
   // 2 bounty keys (schema only)
   bounty: {

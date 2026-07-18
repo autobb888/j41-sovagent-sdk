@@ -1484,6 +1484,77 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
+   * Accept a sovereign attestation tuple from the inbox and carry it on-chain.
+   * Same opaque-passthrough pattern as acceptReview — the backend pre-formats the
+   * tuple hex; we allowlist ONLY review.attestation and write it verbatim. We never
+   * build or verify the tuple bytes (the buyer signature inside self-polices forgery).
+   */
+  async acceptAttestationTuple(inboxId: string): Promise<void> {
+    if (!this.wif || !this.iAddress) {
+      throw new Error(`Cannot accept attestation ${inboxId}: WIF key and i-address required`);
+    }
+    try {
+      const { data: inboxItem } = await this._client.getInboxItem(inboxId);
+      if (inboxItem.status !== 'pending') {
+        console.log(`[J41] Inbox item ${inboxId} already ${inboxItem.status}, skipping`);
+        return;
+      }
+      const [{ data: identityData }, utxoData] = await Promise.all([
+        this._client.getIdentityRaw(),
+        this._client.getUtxos(),
+      ]);
+      if (!identityData.prevOutput) {
+        throw new Error(`Cannot accept attestation ${inboxId}: identity previous output not found`);
+      }
+      if (!utxoData.utxos || utxoData.utxos.length === 0) {
+        throw new Error(`Cannot accept attestation ${inboxId}: no UTXOs available for TX fee`);
+      }
+
+      const vdxfAdditions: Record<string, unknown[]> = {};
+      // Allowlist restricted to the single attestation key — a compromised platform
+      // inbox must not be able to write any other VDXF key to our identity.
+      const attestationAllowedIaddrs: Set<string> = new Set([VDXF_KEYS.review.attestation]);
+
+      if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
+        for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
+          if (value != null) {
+            if (!attestationAllowedIaddrs.has(key)) {
+              console.error(
+                `[J41] acceptAttestationTuple ${inboxId}: dropping unexpected VDXF key ${key} ` +
+                `(not review.attestation) — possible platform tampering`,
+              );
+              continue;
+            }
+            vdxfAdditions[key] = Array.isArray(value) ? value : [value];
+          }
+        }
+        if (Object.keys(vdxfAdditions).length === 0) {
+          throw new Error(`acceptAttestationTuple ${inboxId}: inbox vdxfData contained no review.attestation keys after whitelist`);
+        }
+      } else {
+        throw new Error(
+          `acceptAttestationTuple ${inboxId}: inbox item has no VDXF review.attestation — ` +
+          `refusing to synthesize one (would produce an unverifiable on-chain record)`,
+        );
+      }
+
+      const { blockHeight: _tip } = await this._client.getChainInfo();
+      const signedTxHex = buildIdentityUpdateTx({
+        wif: this.wif, identityData, utxos: utxoData.utxos, vdxfAdditions,
+        network: this.networkType, expiryHeight: computeExpiryHeight(_tip, IDENTITY_EXPIRY_DELTA),
+      });
+      const broadcastResult = await this._client.broadcast(signedTxHex);
+      console.log(`[J41] ✅ Attestation written on-chain: ${broadcastResult.txid}`);
+      await this._client.acceptInboxItem(inboxId, broadcastResult.txid);
+      console.log(`[J41] ✅ Attestation accepted`);
+      this.emit('attestation:accepted', { inboxId, txid: broadcastResult.txid });
+    } catch (err) {
+      console.error(`[J41] Failed to accept attestation ${inboxId}:`, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+  }
+
+  /**
    * Accept a job record from the inbox and update identity on-chain.
    * Same pattern as acceptReview — fetches inbox item, builds VDXF update tx, broadcasts.
    */
