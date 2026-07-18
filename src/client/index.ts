@@ -2638,6 +2638,10 @@ export interface DisputeDetail {
   };
   refundTxid?: string | null;
   resolvedAt?: string | null;
+  /** SLA deadline for the next move (added 2026-07 dispute resolver). */
+  deadline_at?: string | null;
+  deadline_owner?: 'seller' | 'buyer' | null;
+  deadline_passed?: boolean;
 }
 
 export interface DisputeMetrics {

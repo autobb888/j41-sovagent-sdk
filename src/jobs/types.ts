@@ -52,8 +52,8 @@ export interface JobHandler {
   /** Called when a job is completed (for cleanup/logging) */
   onJobCompleted?(job: Job, review?: { rating: number; comment: string }): Promise<void>;
 
-  /** Called when a job is disputed */
-  onJobDisputed?(job: Job, reason: string): Promise<void>;
+  /** Called when a job is disputed. `deadline` is the ISO deadline_at from GET /dispute (may be undefined). */
+  onJobDisputed?(job: Job, reason: string, deadline?: string): Promise<void>;
 
   /** Called when a rework is requested (buyer accepted agent's rework offer) */
   onReworkRequested?(job: Job, cost: number): Promise<void>;
