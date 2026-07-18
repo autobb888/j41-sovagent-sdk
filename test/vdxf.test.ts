@@ -17,11 +17,12 @@ const {
 
 const DD = DATA_DESCRIPTOR_KEY;
 
-// ─── 1. VDXF Schema (25 flat keys) ─────────────────────────────────
+// ─── 1. VDXF Schema (26 flat keys) ─────────────────────────────────
 
 describe('VDXF Schema', () => {
-  it('has exactly 25 keys', () => {
-    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 25);
+  it('has exactly 26 keys', () => {
+    // 25 → 26: added review.attestation (agentplatform::review.attestation) 2026-07-18
+    assert.strictEqual(getCanonicalVdxfDefinitionCount(), 26);
   });
 
   it('PARENT_KEYS still exported (deprecated, for legacy compat)', () => {
@@ -53,9 +54,10 @@ describe('VDXF Schema', () => {
     assert.ok(VDXF_KEYS.service.schema);
   });
 
-  it('review has 1 key (record)', () => {
-    assert.strictEqual(Object.keys(VDXF_KEYS.review).length, 1);
+  it('review has 2 keys (record, attestation)', () => {
+    assert.strictEqual(Object.keys(VDXF_KEYS.review).length, 2);
     assert.ok(VDXF_KEYS.review.record);
+    assert.ok(VDXF_KEYS.review.attestation);
   });
 
   it('bounty has 2 keys (record, application)', () => {
