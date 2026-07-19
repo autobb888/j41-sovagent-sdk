@@ -70,7 +70,10 @@ test('getIdentityKeys refuses on mainnet when no platform signer is pinned (no e
   process.env.J41_NETWORK = 'verus';
   try {
     const client = new J41Client({ apiUrl: 'https://api.junction41.io' });
+    let requestCalls = 0;
+    (client as any).request = async () => { requestCalls++; return { data: baseData }; };
     await assert.rejects(() => client.getIdentityKeys('example@'), (e: any) => e.code === 'PLATFORM_SIGNER_REQUIRED');
+    assert.strictEqual(requestCalls, 0, 'mainnet refusal must fail fast — no request sent to the unverifiable endpoint');
   } finally {
     if (prevPin === undefined) delete process.env.J41_PLATFORM_SIGNER; else process.env.J41_PLATFORM_SIGNER = prevPin;
     if (prevReq === undefined) delete process.env.J41_REQUIRE_PLATFORM_SIGNER; else process.env.J41_REQUIRE_PLATFORM_SIGNER = prevReq;

@@ -716,21 +716,14 @@ export class J41Client {
     cachedAt?: string;
     platformSignature?: string;
   }> {
-    const res = await this.request<{ data: {
-      iaddress: string;
-      name: string;
-      primaryAddresses: string[];
-      minimumSignatures: number;
-      cachedAt?: string;
-      platformSignature?: string;
-    } }>('GET', `/v1/identity/${encodeURIComponent(idOrName)}/keys`);
-    const data = res.data;
-
-    // SECURITY (trust anchor): this endpoint decides which addresses may sign
-    // for an identity — every signature check depends on it, and it is MITM-able
-    // over the wire. When an operator pins the platform signer
+    // SECURITY (trust anchor): capture the pin + network and enforce the mainnet
+    // refusal BEFORE the request — so we never leak a request to an unverifiable
+    // endpoint before refusing, and the env read can't race a concurrently
+    // mutated process.env after an await. This endpoint decides which addresses
+    // may sign for an identity — every signature check depends on it, and it is
+    // MITM-able over the wire. When an operator pins the platform signer
     // (J41_PLATFORM_SIGNER = the platform's R-address), REQUIRE and verify a
-    // `platformSignature` over the JCS-canonical response, so a tampered
+    // `platformSignature` over the JCS-canonical response (below), so a tampered
     // primaryAddresses set can't be trusted. Unset by default → no behaviour
     // change until the backend ships signed responses (see backend report #2).
     const pinned = process.env.J41_PLATFORM_SIGNER;
@@ -739,12 +732,8 @@ export class J41Client {
     // letting the platform's getIdentityKeys response go unverified on mainnet
     // means a MITM/compromised platform becomes the on-chain trust anchor for
     // every downstream signature verification. On testnet the pin remains
-    // optional for dev workflows.
-    //
-    // We don't have a `networkType` field on the client, so detect mainnet by
-    // the base URL pattern OR the J41_NETWORK env. baseUrl test catches the
-    // default production endpoint; the env is the explicit override for
-    // operators on custom domains.
+    // optional for dev workflows. We don't have a `networkType` field on the
+    // client, so detect mainnet by the base URL pattern OR the J41_NETWORK env.
     const looksLikeMainnet =
       /^https:\/\/(api\.)?junction41\.(io|com|net)/i.test(this.baseUrl)
       || process.env.J41_NETWORK === 'verus';
@@ -757,6 +746,16 @@ export class J41Client {
         500,
       );
     }
+
+    const res = await this.request<{ data: {
+      iaddress: string;
+      name: string;
+      primaryAddresses: string[];
+      minimumSignatures: number;
+      cachedAt?: string;
+      platformSignature?: string;
+    } }>('GET', `/v1/identity/${encodeURIComponent(idOrName)}/keys`);
+    const data = res.data;
 
     if (pinned) {
       const { platformSignature, ...signed } = data as Record<string, unknown>;
