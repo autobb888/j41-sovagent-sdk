@@ -527,6 +527,18 @@ export class J41Client {
     return res.data;
   }
 
+  /** Tell the platform a worker genuinely attached (connected) to this job. */
+  async confirmWorkerAttached(jobId: string): Promise<Job> {
+    const res = await this.request<{ data: Job }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/worker-attached`, {});
+    return res.data;
+  }
+
+  /** Tell the platform a worker failed to attach (never spawned / never connected). */
+  async reportWorkerAttachFailed(jobId: string, reason: string): Promise<Job> {
+    const res = await this.request<{ data: Job }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/worker-attach-failed`, { reason });
+    return res.data;
+  }
+
   /** Complete a job (buyer confirms delivery) */
   async completeJob(jobId: string, signature: string, timestamp: number): Promise<Job> {
     const res = await this.request<{ data: Job }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/complete`, { timestamp, signature });
