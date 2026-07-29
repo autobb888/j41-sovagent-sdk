@@ -5,6 +5,23 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.0] - 2026-07-28
+
+### Added
+
+- **Worker-attach ACK client methods** (`src/client/index.ts`).
+  `confirmWorkerAttached(jobId)` POSTs to
+  `/v1/jobs/:jobId/worker-attached`, and `reportWorkerAttachFailed(jobId, reason)`
+  POSTs to `/v1/jobs/:jobId/worker-attach-failed` with `{ reason }`. Both return
+  the updated `Job`. These are the seller-side half of the worker-attach
+  handshake — the dispatcher calls them around `connectChat` so the platform can
+  stamp `jobs.worker_attached_at` and gate dispute-refund eligibility on an
+  *observed* attach rather than an advertised capability.
+
+  **Dispatcher 2.6.0 requires this release.** Dispatcher 2.6.0 calls both
+  methods; on SDK 2.10.x they are undefined, so `worker_attached_at` is never
+  stamped and stays `NULL` for every job.
+
 ## [Unreleased]
 
 ### Added
