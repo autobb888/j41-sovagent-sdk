@@ -1583,7 +1583,7 @@ export class J41Agent extends EventEmitter {
   ): Promise<InboxBatchResult> {
     const maxBytes = opts.maxAdditionBytes ?? MAX_BATCH_ADDITION_BYTES;
     const result: InboxBatchResult = {
-      txid: null, written: [], acked: [], ackFailed: [], rejected: [], deferred: [], alreadyDone: [],
+      txid: null, expiryHeight: null, written: [], acked: [], ackFailed: [], rejected: [], deferred: [], alreadyDone: [],
     };
     if (!items || items.length === 0) return result;
     if (!this.wif || !this.iAddress) {
@@ -1750,6 +1750,7 @@ export class J41Agent extends EventEmitter {
       if (signedTxHex && mergedRefs.length > 0) {
         const broadcastResult = await this._client.broadcast(signedTxHex);
         result.txid = broadcastResult.txid;
+        result.expiryHeight = expiryHeight ?? null;
         result.written.push(...mergedRefs);
         console.log(`[J41] ✅ Inbox batch written on-chain (${mergedRefs.length} item(s)): ${broadcastResult.txid}`);
       }

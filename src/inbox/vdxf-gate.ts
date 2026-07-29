@@ -167,6 +167,13 @@ export interface InboxBatchItemRef {
 export interface InboxBatchResult {
   /** Broadcast txid, or null when nothing needed a chain write. */
   txid: string | null;
+  /**
+   * The expiryHeight stamped into the broadcast tx, or null when nothing was
+   * broadcast. The caller needs this to decide when a pending write is provably
+   * dead rather than merely slow: a wall-clock guess would release the gate while
+   * the tx is still valid in the mempool and rebuild the double-spend.
+   */
+  expiryHeight: number | null;
   /** Items whose value is on-chain (freshly written, or already present). */
   written: InboxBatchItemRef[];
   /** Inbox ids the backend has acknowledged as accepted. */
