@@ -77,8 +77,8 @@ function makeAgent(items: Record<string, any>, opts: {
   return { agent, calls };
 }
 
-const pendingReview = (id: string, value: unknown = 'deadbeef') => ({ id, status: 'pending', vdxfData: { [REVIEW]: value } });
-const pendingAttest = (id: string, value: unknown = 'beef') => ({ id, status: 'pending', vdxfData: { [ATTEST]: value } });
+const pendingReview = (id: string, value: unknown = 'deadbeef') => ({ id, type: 'review', status: 'pending', vdxfData: { [REVIEW]: value } });
+const pendingAttest = (id: string, value: unknown = 'beef') => ({ id, type: 'attestation', status: 'pending', vdxfData: { [ATTEST]: value } });
 
 describe('acceptInboxBatch — batching (the core fix)', () => {
   it('merges an attestation and a review into ONE transaction and acks both', async () => {
@@ -114,7 +114,7 @@ describe('acceptInboxBatch — batching (the core fix)', () => {
   });
 
   it('skips a non-pending item as alreadyDone without writing it', async () => {
-    const { agent, calls } = makeAgent({ r1: { id: 'r1', status: 'accepted', vdxfData: { [REVIEW]: 'x' } } });
+    const { agent, calls } = makeAgent({ r1: { id: 'r1', type: 'review', status: 'accepted', vdxfData: { [REVIEW]: 'x' } } });
     const res = await agent.acceptInboxBatch([{ id: 'r1', type: 'review' }]);
     assert.deepEqual(res.alreadyDone, ['r1']);
     assert.strictEqual(calls.broadcast, 0, 'no chain write for an already-accepted item');
@@ -131,7 +131,7 @@ describe('acceptInboxBatch — batching (the core fix)', () => {
 describe('acceptInboxBatch — per-item independence (no all-or-nothing coupling)', () => {
   it('a gate-poisoned item is rejected while the healthy item still writes', async () => {
     const { agent, calls } = makeAgent({
-      bad: { id: 'bad', status: 'pending', vdxfData: { [PAYADDR]: 'attacker' } },
+      bad: { id: 'bad', type: 'review', status: 'pending', vdxfData: { [PAYADDR]: 'attacker' } },
       good: pendingReview('good'),
     });
     const res = await agent.acceptInboxBatch([
@@ -179,6 +179,60 @@ describe('acceptInboxBatch — per-item independence (no all-or-nothing coupling
       agent.acceptInboxBatch([{ id: 'r1', type: 'review' }]),
       /Transaction rejected by the network/,
     );
+  });
+});
+
+describe('acceptInboxBatch — environmental failures must NOT be blamed on items', () => {
+  // Review finding: bisection assumed a solo-build failure proves the item is at
+  // fault. A DETERMINISTIC ENVIRONMENTAL failure breaks the merged build AND every
+  // solo build identically, so every item would be hard-rejected — and the
+  // dispatcher dead-letters `rejected` items individually. A wallet dipping below
+  // the fee for 5 cycles would permanently quarantine every pending item: strictly
+  // worse than the bug this whole change exists to fix.
+  function makeStarvedAgent(utxos: unknown[]) {
+    const kp = generateKeypair('verustest');
+    const identityData = JSON.parse(JSON.stringify(FIXTURE.identityData));
+    identityData.identity.primaryaddresses = [kp.address];
+    const agent = new J41Agent({
+      apiUrl: 'https://api.example.com', wif: kp.wif,
+      iAddress: identityData.identity.identityaddress, identityName: 'batchtest.agentplatform@',
+    });
+    const items: Record<string, any> = { r1: pendingReview('r1'), a1: pendingAttest('a1') };
+    agent.client.getInboxItem = async (id: string) => ({ data: items[id] });
+    agent.client.getIdentityRaw = async () => ({ data: identityData });
+    agent.client.getUtxos = async () => ({ utxos });
+    agent.client.getChainInfo = async () => ({ blockHeight: 1000 });
+    agent.client.broadcast = async () => ({ txid: 'cafebabe' });
+    agent.client.acceptInboxItem = async () => ({ data: { success: true, status: 'accepted' } });
+    return agent;
+  }
+  const kpAddr = () => generateKeypair('verustest').address;
+
+  it('insufficient funds throws batch-level — it does NOT reject the items', async () => {
+    const agent = makeStarvedAgent([{ txid: 'ab'.repeat(32), vout: 0, outputIndex: 0, address: undefined, satoshis: 5000 }]);
+    await assert.rejects(
+      agent.acceptInboxBatch([{ id: 'r1', type: 'review' }, { id: 'a1', type: 'attestation' }]),
+      /Insufficient funds|No spendable/,
+      'an unfunded wallet is environmental — the caller must classify it, not dead-letter the items',
+    );
+  });
+
+  it('only unspendable i-address UTXOs throws batch-level, not per-item', async () => {
+    const agent = makeStarvedAgent([{ txid: 'cd'.repeat(32), vout: 0, outputIndex: 0, address: 'iSomeOtherAddress', satoshis: 900000 }]);
+    await assert.rejects(
+      agent.acceptInboxBatch([{ id: 'r1', type: 'review' }, { id: 'a1', type: 'attestation' }]),
+      /No spendable R-address UTXOs/,
+    );
+  });
+
+  it('a real poison item is still blamed when the environment is healthy', async () => {
+    // The control must not over-correct: genuine per-item poison must still be caught.
+    const { agent } = makeAgent({ poison: pendingReview('poison', BUILD_POISON), good: pendingAttest('good') });
+    const res = await agent.acceptInboxBatch([
+      { id: 'poison', type: 'review' }, { id: 'good', type: 'attestation' },
+    ]);
+    assert.deepEqual(res.rejected.map((r: any) => r.id), ['poison']);
+    assert.deepEqual(res.written.map((w: any) => w.id), ['good']);
   });
 });
 
@@ -230,6 +284,41 @@ describe('acceptInboxBatch — ack semantics (verified backend contract)', () =>
     ]);
     assert.deepEqual(res.acked, ['a1']);
     assert.deepEqual(res.ackFailed.map((f: any) => f.id), ['r1']);
+  });
+
+  it('acks carry the broadcast txid (not undefined, not a stale one)', async () => {
+    const seen: Array<string | undefined> = [];
+    const { agent } = makeAgent({ r1: pendingReview('r1') });
+    const orig = agent.client.acceptInboxItem;
+    agent.client.acceptInboxItem = async (id: string, txid?: string) => { seen.push(txid); return orig(id); };
+    await agent.acceptInboxBatch([{ id: 'r1', type: 'review' }]);
+    assert.deepEqual(seen, ['cafebabe']);
+  });
+
+  it('emits a per-type :accepted event carrying inboxId and txid', async () => {
+    const { agent } = makeAgent({ r1: pendingReview('r1'), a1: pendingAttest('a1') });
+    const events: any[] = [];
+    agent.on('review:accepted', (e: any) => events.push(['review', e]));
+    agent.on('attestation:accepted', (e: any) => events.push(['attestation', e]));
+    await agent.acceptInboxBatch([{ id: 'r1', type: 'review' }, { id: 'a1', type: 'attestation' }]);
+    assert.strictEqual(events.length, 2);
+    const review = events.find(e => e[0] === 'review')[1];
+    assert.strictEqual(review.inboxId, 'r1');
+    assert.strictEqual(review.txid, 'cafebabe');
+  });
+
+  it('respects the size budget by deferring the overflow item, never dropping it', async () => {
+    const { agent, calls } = makeAgent({ a1: pendingAttest('a1'), r1: pendingReview('r1') });
+    // 2 bytes each (4 hex chars / 8 hex chars); a 3-byte budget fits exactly one.
+    const res = await agent.acceptInboxBatch(
+      [{ id: 'a1', type: 'attestation' }, { id: 'r1', type: 'review' }],
+      { maxAdditionBytes: 3 },
+    );
+    assert.strictEqual(calls.broadcast, 1);
+    assert.strictEqual(res.written.length, 1);
+    assert.strictEqual(res.deferred.length, 1, 'overflow is deferred to the next cycle');
+    assert.match(res.deferred[0].reason, /size-budget/);
+    assert.deepEqual(res.rejected, [], 'a size overflow is NOT the item’s fault');
   });
 
   it('an empty batch performs no chain calls at all', async () => {

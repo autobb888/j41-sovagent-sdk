@@ -1605,6 +1605,18 @@ export class J41Agent extends EventEmitter {
       }
       if (detail.status !== 'pending') { result.alreadyDone.push(ref.id); continue; }
 
+      // Cross-check the caller's label against the backend's own type. A mismatch
+      // already fails closed (the wrong allowlist rejects the item), but silent
+      // misrouting is worth surfacing as a clear error rather than a confusing
+      // "no keys after whitelist".
+      if (detail.type && detail.type !== ref.type) {
+        result.rejected.push({
+          id: ref.id, type: ref.type,
+          error: `inbox item type mismatch: caller said '${ref.type}', backend says '${detail.type}'`,
+        });
+        continue;
+      }
+
       try {
         const additions = buildInboxVdxfAdditions(ref.type, detail, `acceptInboxBatch ${ref.id}`);
         assertContentmultimapValueSizes(additions);
@@ -1623,9 +1635,9 @@ export class J41Agent extends EventEmitter {
       this._client.getUtxos(),
     ]);
     if (!identityData.prevOutput) throw new Error('Cannot accept inbox batch: identity previous output not found');
-    if (!utxoData.utxos || utxoData.utxos.length === 0) {
-      throw new Error('Cannot accept inbox batch: no UTXOs available for TX fee');
-    }
+    // NOTE: the UTXO/fee guard lives in Phase 4, not here. If every candidate is
+    // already on-chain and only its ack is outstanding, no transaction is built
+    // and no fee is spent — an empty wallet must not block that pure-ack path.
     const onChain: Record<string, unknown> = (identityData.identity as Record<string, unknown>)?.contentmultimap as Record<string, unknown> ?? {};
 
     // ---- Phase 3: merge. One item per VDXF key, because buildIdentityUpdateTx
@@ -1658,6 +1670,9 @@ export class J41Agent extends EventEmitter {
 
     // ---- Phase 4: build (with blame bisection) + broadcast. ----
     if (mergedRefs.length > 0) {
+      if (!utxoData.utxos || utxoData.utxos.length === 0) {
+        throw new Error('Cannot accept inbox batch: no UTXOs available for TX fee');
+      }
       const { blockHeight: tip } = await this._client.getChainInfo();
       const expiryHeight = computeExpiryHeight(tip, IDENTITY_EXPIRY_DELTA);
       const buildArgs = { wif: this.wif, identityData, utxos: utxoData.utxos, network: this.networkType, expiryHeight };
@@ -1671,6 +1686,22 @@ export class J41Agent extends EventEmitter {
         // over any object and never validates structure. Left unattributed this
         // would be an uncounted batch-level throw that blocks every healthy item
         // for this agent forever. Bisect offline to find the culprit(s).
+        //
+        // CONTROL BUILD FIRST. A solo-build failure does NOT by itself prove the
+        // item is at fault: a deterministic ENVIRONMENTAL failure (wallet below
+        // the fee, only unspendable i-address UTXOs, or a malformed value already
+        // in the carried-forward on-chain contentmultimap) breaks the merged build
+        // and every solo build identically. Without this control, every healthy
+        // item would be hard-rejected and the dispatcher would dead-letter them
+        // all — a transient wallet dip permanently quarantining the whole inbox,
+        // strictly worse than the bug this method fixes. If a build with NO
+        // additions also fails, the fault is the environment, not any item.
+        try {
+          buildIdentityUpdateTx({ ...buildArgs, vdxfAdditions: Object.create(null) });
+        } catch {
+          throw buildErr; // environmental — caller classifies and bounds it
+        }
+
         const survivors: InboxBatchItemRef[] = [];
         let rebuilt: Record<string, unknown[]> = Object.create(null);
         let blamed = 0;
@@ -1686,17 +1717,42 @@ export class J41Agent extends EventEmitter {
           }
         }
         if (blamed === 0) throw buildErr; // genuinely batch-scoped — caller classifies
-        if (survivors.length === 0) return result;
         merged = rebuilt;
         mergedRefs.length = 0;
         mergedRefs.push(...survivors);
-        signedTxHex = buildIdentityUpdateTx({ ...buildArgs, vdxfAdditions: merged });
+        if (survivors.length > 0) {
+          // Solo-pass does not prove combined-pass (interaction effects over the
+          // merged contentmultimap are not provably absent). If the rebuild also
+          // fails, defer the survivors rather than throwing: throwing here would
+          // discard `result` — including the culprits bisection just identified —
+          // so nothing would ever be dead-lettered and the identical cycle would
+          // repeat forever.
+          try {
+            signedTxHex = buildIdentityUpdateTx({ ...buildArgs, vdxfAdditions: merged });
+          } catch (rebuildErr) {
+            for (const ref of survivors) {
+              result.deferred.push({
+                id: ref.id, type: ref.type,
+                reason: `post-bisection rebuild failed: ${errMsg(rebuildErr)}`,
+              });
+            }
+            mergedRefs.length = 0;
+            signedTxHex = null;
+          }
+        } else {
+          signedTxHex = null;
+        }
       }
 
-      const broadcastResult = await this._client.broadcast(signedTxHex);
-      result.txid = broadcastResult.txid;
-      result.written.push(...mergedRefs);
-      console.log(`[J41] ✅ Inbox batch written on-chain (${mergedRefs.length} item(s)): ${broadcastResult.txid}`);
+      // Broadcast only if we still have something to write. Falling through with
+      // nothing merged is valid: short-circuited items in `written` still need
+      // their acks in Phase 5, so we must NOT return early here.
+      if (signedTxHex && mergedRefs.length > 0) {
+        const broadcastResult = await this._client.broadcast(signedTxHex);
+        result.txid = broadcastResult.txid;
+        result.written.push(...mergedRefs);
+        console.log(`[J41] ✅ Inbox batch written on-chain (${mergedRefs.length} item(s)): ${broadcastResult.txid}`);
+      }
     }
 
     // ---- Phase 5: per-item ack, isolated. ----
