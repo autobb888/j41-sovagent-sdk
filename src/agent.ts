@@ -24,8 +24,12 @@ import { assertConsentChallengeHash } from './auth/challenge-hash.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import { MAX_ACCEPT_ATTEMPTS, recordAcceptFailure, clearAcceptFailure, pruneAcceptFailures } from './jobs/accept-retry.js';
-import { buildInboxVdxfAdditions } from './inbox/vdxf-gate.js';
-import type { Job, RegisterServiceData } from './client/index.js';
+import {
+  buildInboxVdxfAdditions, additionsByteSize, errMsg, isAlreadyProcessed, valueAlreadyOnChain,
+  MAX_BATCH_ADDITION_BYTES,
+} from './inbox/vdxf-gate.js';
+import type { InboxAcceptType, InboxBatchItemRef, InboxBatchResult } from './inbox/vdxf-gate.js';
+import type { Job, RegisterServiceData, InboxItemDetail } from './client/index.js';
 import type { SessionInput, AgentProfileInput } from './onboarding/finalize.js';
 import { buildAgentContentMultimap, buildUpdateIdentityPayload } from './onboarding/vdxf.js';
 import type { PrivacyTier } from './privacy/tiers.js';
@@ -37,7 +41,7 @@ import { randomUUID } from 'node:crypto';
 import { canonicalize } from 'json-canonicalize';
 import { buildIdentityUpdateTx, IDENTITY_EXPIRY_DELTA } from './identity/update.js';
 import { DEFAULT_TX_EXPIRY_DELTA } from './tx/payment.js';
-import { VDXF_KEYS, makeSubDD } from './onboarding/vdxf.js';
+import { VDXF_KEYS, makeSubDD, assertContentmultimapValueSizes } from './onboarding/vdxf.js';
 import { WorkspaceClient } from './workspace/index.js';
 
 /**
@@ -1552,6 +1556,173 @@ export class J41Agent extends EventEmitter {
       console.error(`[J41] Failed to accept job record ${inboxId}:`, err instanceof Error ? err.message : String(err));
       throw err;
     }
+  }
+
+  /**
+   * Accept several pending inbox items in ONE identity update transaction.
+   *
+   * Why this exists: accepting items one at a time writes N transactions to the
+   * same VerusID back-to-back. The first spends the identity's prevOutput and
+   * sits in the mempool, but the platform API keeps serving the last *confirmed*
+   * prevOutput — so every subsequent tx is built spending an already-spent output
+   * and the daemon rejects it as a double-spend. Observed live on 3/3 agents: the
+   * attestation landed, the review that followed milliseconds later was rejected
+   * 5 times and dead-lettered. Batching makes that impossible: one spend, one tx.
+   *
+   * Failure model — deliberately per item, never all-or-nothing:
+   *  - `rejected`   hard, item-specific (gate failure, oversized value, or a value
+   *                 that breaks tx build). Caller dead-letters these individually.
+   *  - `deferred`   transient (key collision, size budget, fetch flake). Neither
+   *                 counted nor cleared — retried next cycle.
+   *  - `ackFailed`  written on-chain but the backend ack failed. Transient.
+   *  - throws       genuinely batch-scoped only (identity fetch, UTXOs, broadcast).
+   */
+  async acceptInboxBatch(
+    items: InboxBatchItemRef[],
+    opts: { maxAdditionBytes?: number } = {},
+  ): Promise<InboxBatchResult> {
+    const maxBytes = opts.maxAdditionBytes ?? MAX_BATCH_ADDITION_BYTES;
+    const result: InboxBatchResult = {
+      txid: null, written: [], acked: [], ackFailed: [], rejected: [], deferred: [], alreadyDone: [],
+    };
+    if (!items || items.length === 0) return result;
+    if (!this.wif || !this.iAddress) {
+      throw new Error('Cannot accept inbox batch: WIF key and i-address required');
+    }
+
+    // ---- Phase 1: per-item fetch + gate. Nothing here touches the chain. ----
+    // Each item is validated against ITS OWN type allowlist BEFORE any merging,
+    // so a key can never ride into the batch under another item's type (52f8d07).
+    const candidates: Array<{ ref: InboxBatchItemRef; additions: Record<string, unknown[]> }> = [];
+    for (const ref of items) {
+      let detail: InboxItemDetail;
+      try {
+        const res = await this._client.getInboxItem(ref.id);
+        detail = res.data;
+      } catch (e) {
+        result.deferred.push({ id: ref.id, type: ref.type, reason: `getInboxItem failed: ${errMsg(e)}` });
+        continue;
+      }
+      if (detail.status !== 'pending') { result.alreadyDone.push(ref.id); continue; }
+
+      try {
+        const additions = buildInboxVdxfAdditions(ref.type, detail, `acceptInboxBatch ${ref.id}`);
+        assertContentmultimapValueSizes(additions);
+        candidates.push({ ref, additions });
+      } catch (e) {
+        // Gate failure or an oversized value — can never succeed, so it is the
+        // item's own fault and must not be retried forever.
+        result.rejected.push({ id: ref.id, type: ref.type, error: errMsg(e) });
+      }
+    }
+    if (candidates.length === 0) return result;
+
+    // ---- Phase 2: one identity/UTXO/chain read for the whole batch. ----
+    const [{ data: identityData }, utxoData] = await Promise.all([
+      this._client.getIdentityRaw(),
+      this._client.getUtxos(),
+    ]);
+    if (!identityData.prevOutput) throw new Error('Cannot accept inbox batch: identity previous output not found');
+    if (!utxoData.utxos || utxoData.utxos.length === 0) {
+      throw new Error('Cannot accept inbox batch: no UTXOs available for TX fee');
+    }
+    const onChain: Record<string, unknown> = (identityData.identity as Record<string, unknown>)?.contentmultimap as Record<string, unknown> ?? {};
+
+    // ---- Phase 3: merge. One item per VDXF key, because buildIdentityUpdateTx
+    // REPLACES a key's array rather than appending (update.ts:117-120) — merging
+    // two items under one key would silently drop one, the very data loss this
+    // method exists to prevent. Also short-circuit anything already on-chain so a
+    // stuck ack cannot rebroadcast identical data forever at 10,000 sats a time.
+    let merged: Record<string, unknown[]> = Object.create(null);
+    const mergedRefs: InboxBatchItemRef[] = [];
+    let runningBytes = 0;
+    for (const c of candidates) {
+      const keys = Object.keys(c.additions);
+      if (keys.every(k => valueAlreadyOnChain(onChain, k, c.additions[k]))) {
+        result.written.push(c.ref); // needs only its ack, no chain write
+        continue;
+      }
+      if (keys.some(k => k in merged)) {
+        result.deferred.push({ id: c.ref.id, type: c.ref.type, reason: 'key-collision — deferred to next cycle' });
+        continue;
+      }
+      const size = additionsByteSize(c.additions);
+      if (runningBytes + size > maxBytes) {
+        result.deferred.push({ id: c.ref.id, type: c.ref.type, reason: 'size-budget — deferred to next cycle' });
+        continue;
+      }
+      for (const k of keys) merged[k] = c.additions[k];
+      mergedRefs.push(c.ref);
+      runningBytes += size;
+    }
+
+    // ---- Phase 4: build (with blame bisection) + broadcast. ----
+    if (mergedRefs.length > 0) {
+      const { blockHeight: tip } = await this._client.getChainInfo();
+      const expiryHeight = computeExpiryHeight(tip, IDENTITY_EXPIRY_DELTA);
+      const buildArgs = { wif: this.wif, identityData, utxos: utxoData.utxos, network: this.networkType, expiryHeight };
+
+      let signedTxHex: string | null = null;
+      try {
+        signedTxHex = buildIdentityUpdateTx({ ...buildArgs, vdxfAdditions: merged });
+      } catch (buildErr) {
+        // A value can pass the allowlist AND the size check and still be
+        // unserializable: contentmultimapValueByteSize JSON.stringify-fallbacks
+        // over any object and never validates structure. Left unattributed this
+        // would be an uncounted batch-level throw that blocks every healthy item
+        // for this agent forever. Bisect offline to find the culprit(s).
+        const survivors: InboxBatchItemRef[] = [];
+        let rebuilt: Record<string, unknown[]> = Object.create(null);
+        let blamed = 0;
+        for (const c of candidates) {
+          if (!mergedRefs.some(r => r.id === c.ref.id)) continue;
+          try {
+            buildIdentityUpdateTx({ ...buildArgs, vdxfAdditions: c.additions });
+            for (const k of Object.keys(c.additions)) rebuilt[k] = c.additions[k];
+            survivors.push(c.ref);
+          } catch (soloErr) {
+            blamed++;
+            result.rejected.push({ id: c.ref.id, type: c.ref.type, error: `tx build failed: ${errMsg(soloErr)}` });
+          }
+        }
+        if (blamed === 0) throw buildErr; // genuinely batch-scoped — caller classifies
+        if (survivors.length === 0) return result;
+        merged = rebuilt;
+        mergedRefs.length = 0;
+        mergedRefs.push(...survivors);
+        signedTxHex = buildIdentityUpdateTx({ ...buildArgs, vdxfAdditions: merged });
+      }
+
+      const broadcastResult = await this._client.broadcast(signedTxHex);
+      result.txid = broadcastResult.txid;
+      result.written.push(...mergedRefs);
+      console.log(`[J41] ✅ Inbox batch written on-chain (${mergedRefs.length} item(s)): ${broadcastResult.txid}`);
+    }
+
+    // ---- Phase 5: per-item ack, isolated. ----
+    for (const ref of result.written) {
+      try {
+        await this._client.acceptInboxItem(ref.id, result.txid ?? undefined);
+        result.acked.push(ref.id);
+        this.emit(`${ref.type}:accepted`, { inboxId: ref.id, txid: result.txid });
+      } catch (e) {
+        // Verified backend contract: re-accepting an already-accepted item returns
+        // 400 ALREADY_PROCESSED. That is terminal SUCCESS, not a retryable failure —
+        // it is exactly what a lost ack response looks like on the next attempt.
+        // Treating it as a failure would park the item in ackFailed forever, and
+        // the already-on-chain short-circuit would suppress any rebroadcast that
+        // might otherwise have resolved it.
+        if (isAlreadyProcessed(e)) {
+          result.acked.push(ref.id);
+          this.emit(`${ref.type}:accepted`, { inboxId: ref.id, txid: result.txid });
+          continue;
+        }
+        result.ackFailed.push({ id: ref.id, error: errMsg(e) });
+        console.warn(`[J41] inbox batch: on-chain write succeeded but ack failed for ${ref.id}: ${errMsg(e)}`);
+      }
+    }
+
+    return result;
   }
 
   /**

@@ -283,6 +283,10 @@ export {
   inboxAllowlistForType,
   buildInboxVdxfAdditions,
   additionsByteSize,
+  isAlreadyProcessed,
+  valueAlreadyOnChain,
   MAX_BATCH_ADDITION_BYTES,
 } from './inbox/vdxf-gate.js';
-export type { InboxAcceptType, InboxItemLike } from './inbox/vdxf-gate.js';
+export type {
+  InboxAcceptType, InboxItemLike, InboxBatchItemRef, InboxBatchResult,
+} from './inbox/vdxf-gate.js';

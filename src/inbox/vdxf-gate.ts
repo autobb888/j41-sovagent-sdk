@@ -152,3 +152,73 @@ export function additionsByteSize(additions: Record<string, unknown[]>): number 
   }
   return total;
 }
+
+/** One item to include in a batched accept. */
+export interface InboxBatchItemRef {
+  id: string;
+  type: InboxAcceptType;
+}
+
+/**
+ * Outcome of one batched accept. Every item lands in exactly one bucket, so the
+ * caller can apply the right retry semantics per item rather than treating the
+ * whole batch as a single success/failure.
+ */
+export interface InboxBatchResult {
+  /** Broadcast txid, or null when nothing needed a chain write. */
+  txid: string | null;
+  /** Items whose value is on-chain (freshly written, or already present). */
+  written: InboxBatchItemRef[];
+  /** Inbox ids the backend has acknowledged as accepted. */
+  acked: string[];
+  /** On-chain but the ack failed — transient; must NOT count against a retry budget. */
+  ackFailed: Array<{ id: string; error: string }>;
+  /** Hard, item-specific failures. The caller dead-letters these individually. */
+  rejected: Array<{ id: string; type: string; error: string }>;
+  /** Transient, item-specific — retried next cycle, neither counted nor cleared. */
+  deferred: Array<{ id: string; type: string; reason: string }>;
+  /** Items the backend already reported as non-pending when fetched. */
+  alreadyDone: string[];
+}
+
+/** Safe message extraction — a non-Error throw must not break a catch block. */
+export function errMsg(e: unknown): string {
+  return (e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : String(e)) || String(e);
+}
+
+/**
+ * True when the backend reports this inbox item was already accepted.
+ *
+ * The ack handler flips status→accepted and then best-effort inserts a cached
+ * review row; those two steps are NOT in one transaction. Once the status UPDATE
+ * commits the item is accepted no matter what follows, and re-accepting returns
+ * 400 ALREADY_PROCESSED. That is terminal success — it is what a lost ack
+ * response looks like on retry. Matched on the machine code, never the prose.
+ */
+export function isAlreadyProcessed(e: unknown): boolean {
+  return !!(e && typeof e === 'object' && (e as { code?: string }).code === 'ALREADY_PROCESSED');
+}
+
+/**
+ * True when `key`'s value is already present on-chain with the same content.
+ *
+ * Used to skip a redundant broadcast when only the backend ack is outstanding.
+ * Without it, a persistently failing ack rebroadcasts identical data every cycle
+ * at 10,000 sats a time. Compared structurally — on-chain values round-trip
+ * through JSON, so reference equality is not available.
+ */
+export function valueAlreadyOnChain(
+  onChain: Record<string, unknown>,
+  key: string,
+  values: unknown[],
+): boolean {
+  const existing = onChain?.[key];
+  if (existing === undefined || existing === null) return false;
+  const existingArr = Array.isArray(existing) ? existing : [existing];
+  if (existingArr.length !== values.length) return false;
+  try {
+    return JSON.stringify(existingArr) === JSON.stringify(values);
+  } catch {
+    return false;
+  }
+}
