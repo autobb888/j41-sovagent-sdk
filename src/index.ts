@@ -275,3 +275,14 @@ export {
   clearBackendFeatureCache,
 } from './backend-features.js';
 export type { BackendVersion } from './backend-features.js';
+
+// Inbox VDXF gate — single source of truth for the per-type accept allowlists
+// (52f8d07 security property). Consumed by the three accept* methods and by
+// batched accepts.
+export {
+  inboxAllowlistForType,
+  buildInboxVdxfAdditions,
+  additionsByteSize,
+  MAX_BATCH_ADDITION_BYTES,
+} from './inbox/vdxf-gate.js';
+export type { InboxAcceptType, InboxItemLike } from './inbox/vdxf-gate.js';

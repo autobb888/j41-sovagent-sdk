@@ -24,6 +24,7 @@ import { assertConsentChallengeHash } from './auth/challenge-hash.js';
 import { ChatClient, type IncomingMessage, type SessionEndingEvent, type SessionExpiringEvent, type JobStatusChangedEvent, type ReviewReceivedEvent } from './chat/client.js';
 import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import { MAX_ACCEPT_ATTEMPTS, recordAcceptFailure, clearAcceptFailure, pruneAcceptFailures } from './jobs/accept-retry.js';
+import { buildInboxVdxfAdditions } from './inbox/vdxf-gate.js';
 import type { Job, RegisterServiceData } from './client/index.js';
 import type { SessionInput, AgentProfileInput } from './onboarding/finalize.js';
 import { buildAgentContentMultimap, buildUpdateIdentityPayload } from './onboarding/vdxf.js';
@@ -1408,49 +1409,13 @@ export class J41Agent extends EventEmitter {
         throw new Error(`Cannot accept review ${inboxId}: no UTXOs available for TX fee — fund the agent wallet`);
       }
 
-      // 3. Build nested DD VDXF additions from the inbox item's review data
-      const reviewKeys = VDXF_KEYS.review;
-      const vdxfAdditions: Record<string, unknown[]> = {};
-
-      // Audit 2026-06-02 H8: restrict allowed VDXF keys to the review.*
-      // namespace. Without this, a compromised platform inbox could pass any
-      // VDXF key in inboxItem.vdxfData — including agent.payAddress — and
-      // we'd write attacker-controlled data to our on-chain identity. The
-      // allowlist is the set of i-addresses under VDXF_KEYS.review.
-      const reviewAllowedIaddrs: Set<string> = new Set([VDXF_KEYS.review.record]);
-
-      // Check if vdxfData is already formatted (flat or legacy)
-      if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
-        // Use pre-computed VDXF data from the inbox item, dropping any key
-        // outside the review namespace.
-        for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
-          if (value != null) {
-            if (!reviewAllowedIaddrs.has(key)) {
-              console.error(
-                `[J41] acceptReview ${inboxId}: dropping unexpected VDXF key ${key} ` +
-                `(not in review.* namespace) — possible platform tampering`,
-              );
-              continue;
-            }
-            vdxfAdditions[key] = Array.isArray(value) ? value : [value];
-          }
-        }
-        if (Object.keys(vdxfAdditions).length === 0) {
-          throw new Error(`acceptReview ${inboxId}: inbox vdxfData contained no review.* keys after whitelist`);
-        }
-      } else {
-        // No pre-formatted VDXF payload. We must NOT synthesize a review.record
-        // here: the buyer's signature covers the exact bytes (incl. the signed
-        // timestamp and message) the platform emitted. Rebuilding from inbox
-        // fields would stamp a fresh timestamp, drop a falsy message, and emit a
-        // makeSubDD DataDescriptor instead of the hex(JSON) container that every
-        // on-chain review record uses — i.e. an unverifiable record in a third,
-        // inconsistent shape. Fail loud instead of writing that to a public chain.
-        throw new Error(
-          `acceptReview ${inboxId}: inbox item has no VDXF review.record — ` +
-          `refusing to synthesize one (would produce an unverifiable on-chain record)`,
-        );
-      }
+      // 3. Build VDXF additions through the shared per-type gate (src/inbox/vdxf-gate.ts).
+      // The allowlist is exactly [review.record] — audit 2026-06-02 H8, narrowed by
+      // 52f8d07 after the attestation key was found riding in on this path. The gate
+      // also refuses to synthesize a review.record when vdxfData is absent: the buyer's
+      // signature covers the exact bytes the platform emitted, so a locally rebuilt
+      // record would carry a fresh timestamp and be unverifiable on-chain.
+      const vdxfAdditions = buildInboxVdxfAdditions('review', inboxItem, `acceptReview ${inboxId}`);
 
       // 4. Build and sign the identity update transaction
       console.log(`[J41] Building identity update transaction...`);
@@ -1510,33 +1475,12 @@ export class J41Agent extends EventEmitter {
         throw new Error(`Cannot accept attestation ${inboxId}: no UTXOs available for TX fee`);
       }
 
-      const vdxfAdditions: Record<string, unknown[]> = {};
       // Allowlist restricted to the single attestation key — a compromised platform
       // inbox must not be able to write any other VDXF key to our identity.
-      const attestationAllowedIaddrs: Set<string> = new Set([VDXF_KEYS.review.attestation]);
-
-      if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
-        for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
-          if (value != null) {
-            if (!attestationAllowedIaddrs.has(key)) {
-              console.error(
-                `[J41] acceptAttestationTuple ${inboxId}: dropping unexpected VDXF key ${key} ` +
-                `(not review.attestation) — possible platform tampering`,
-              );
-              continue;
-            }
-            vdxfAdditions[key] = Array.isArray(value) ? value : [value];
-          }
-        }
-        if (Object.keys(vdxfAdditions).length === 0) {
-          throw new Error(`acceptAttestationTuple ${inboxId}: inbox vdxfData contained no review.attestation keys after whitelist`);
-        }
-      } else {
-        throw new Error(
-          `acceptAttestationTuple ${inboxId}: inbox item has no VDXF review.attestation — ` +
-          `refusing to synthesize one (would produce an unverifiable on-chain record)`,
-        );
-      }
+      // Shared gate: src/inbox/vdxf-gate.ts.
+      const vdxfAdditions = buildInboxVdxfAdditions(
+        'attestation', inboxItem, `acceptAttestationTuple ${inboxId}`,
+      );
 
       const { blockHeight: _tip } = await this._client.getChainInfo();
       const signedTxHex = buildIdentityUpdateTx({
@@ -1582,40 +1526,10 @@ export class J41Agent extends EventEmitter {
         throw new Error(`Cannot accept job record ${inboxId}: no UTXOs — fund the agent wallet`);
       }
 
-      const vdxfAdditions: Record<string, unknown[]> = {};
-
-      // Audit 2026-06-02 H8 mirror: same whitelist for acceptJobRecord,
-      // restricted to job.* namespace.
-      const jobAllowedIaddrs: Set<string> = new Set(Object.values(VDXF_KEYS.job));
-
-      if (inboxItem.vdxfData && Object.keys(inboxItem.vdxfData).length > 0) {
-        for (const [key, value] of Object.entries(inboxItem.vdxfData!)) {
-          if (value != null) {
-            if (!jobAllowedIaddrs.has(key)) {
-              console.error(
-                `[J41] acceptJobRecord ${inboxId}: dropping unexpected VDXF key ${key} ` +
-                `(not in job.* namespace) — possible platform tampering`,
-              );
-              continue;
-            }
-            vdxfAdditions[key] = Array.isArray(value) ? value : [value];
-          }
-        }
-        if (Object.keys(vdxfAdditions).length === 0) {
-          throw new Error(`acceptJobRecord ${inboxId}: inbox vdxfData contained no job.* keys after whitelist`);
-        }
-      } else {
-        const jobRecord: Record<string, unknown> = {
-          timestamp: Math.floor(Date.now() / 1000),
-        };
-        if (inboxItem.senderVerusId) jobRecord.buyer = inboxItem.senderVerusId;
-        if (inboxItem.jobHash) jobRecord.jobHash = inboxItem.jobHash;
-        if ((inboxItem as any).amount != null) jobRecord.amount = (inboxItem as any).amount;
-        if ((inboxItem as any).currency) jobRecord.currency = (inboxItem as any).currency;
-        if ((inboxItem as any).completedAt) jobRecord.completedAt = (inboxItem as any).completedAt;
-
-        vdxfAdditions[VDXF_KEYS.job.record] = [makeSubDD(VDXF_KEYS.job.record, JSON.stringify(jobRecord))];
-      }
+      // Audit 2026-06-02 H8 mirror: same whitelist for acceptJobRecord, restricted
+      // to the job.* namespace. Unlike review/attestation, this type DOES keep its
+      // synthesis fallback when vdxfData is absent. Shared gate: src/inbox/vdxf-gate.ts.
+      const vdxfAdditions = buildInboxVdxfAdditions('job_record', inboxItem, `acceptJobRecord ${inboxId}`);
 
       const { blockHeight: _tip } = await this._client.getChainInfo();
       const signedTxHex = buildIdentityUpdateTx({
