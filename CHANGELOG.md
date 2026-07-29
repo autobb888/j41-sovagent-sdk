@@ -5,6 +5,50 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.0] - 2026-07-29
+
+### Added
+
+- **`J41Agent.acceptInboxBatch(items)` — one identity transaction per agent, not
+  one per inbox item.** Accepting items one at a time wrote N transactions to the
+  same VerusID back-to-back: the first spends the identity `prevOutput` and sits
+  in the mempool while the platform API keeps serving the last *confirmed*
+  `prevOutput`, so every transaction after it was built spending an already-spent
+  output and rejected as a double-spend. Observed live on 3 of 3 agents — an
+  attestation landed, the review that followed milliseconds later was rejected
+  five times and dead-lettered, and its on-chain reputation data never arrived.
+
+  Failure handling is per item, never all-or-nothing: `rejected` (item's own
+  fault), `deferred` (transient), `ackFailed` (written but unacked), and only
+  genuinely batch-scoped faults throw. One item per VDXF key per batch, because
+  `buildIdentityUpdateTx` REPLACES a key's array rather than appending — merging
+  two same-key items would silently drop one.
+
+  Two non-obvious properties, both found by review:
+  - A value can pass the allowlist AND the size check and still be
+    unserializable (`contentmultimapValueByteSize` JSON.stringify-fallbacks over
+    any object). Build failures are bisected offline to blame the item — after a
+    control build confirms the environment is healthy, so a wallet dipping below
+    the fee cannot mass-reject healthy items.
+  - Re-accepting an already-accepted item returns `400 ALREADY_PROCESSED`, which
+    is terminal SUCCESS, not a retryable failure — it is what a lost ack response
+    looks like on retry.
+
+- **`src/inbox/vdxf-gate.ts` — single source of truth for the per-type accept
+  allowlists.** The three `accept*` methods each carried an inline copy; `52f8d07`
+  had to narrow the review one after an audit found it admitting the attestation
+  key. Batching adds a fourth caller, so the allowlists now live in one place and
+  every path gates an item against ITS OWN type before merging. Error strings are
+  byte-compatible; the existing accept tests are the regression proof.
+
+- **`InboxBatchResult.expiryHeight`** so callers can tell a pending write that is
+  provably dead from one that is merely slow.
+
+### Changed
+
+- `acceptReview`, `acceptAttestationTuple`, `acceptJobRecord` now delegate their
+  allowlist logic to the shared gate. No behavioural change.
+
 ## [2.11.0] - 2026-07-28
 
 ### Added
