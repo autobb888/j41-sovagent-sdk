@@ -101,3 +101,56 @@ describe('decodeReviewHistory', () => {
     assert.deepEqual(decodeReviewHistory([{ height: 1, identity: { contentmultimap: {} } }]), []);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review findings — ordering, DataDescriptor wrapping, multi-value arrays
+// ---------------------------------------------------------------------------
+
+describe('review fixes', () => {
+  it('C1: newest-first input is sorted, so earliest-wins does not silently invert', () => {
+    const newestFirst = [...snapshots].reverse();
+    const out = decodeReviewHistory(newestFirst);
+    assert.deepEqual(out.map((r: any) => r.jobHash), ['aaa1', 'bbb2', 'ccc3'],
+      'must not depend on the endpoint returning oldest-first');
+  });
+
+  it('C1: with a duplicate jobHash, sorting means the EARLIEST height wins regardless of input order', () => {
+    const unordered = [
+      { height: 1300, identity: { contentmultimap: { [REVIEW]: [review('dup', 2)] } } },
+      { height: 1000, identity: { contentmultimap: { [REVIEW]: [review('dup', 5)] } } },
+    ];
+    const out = decodeReviewHistory(unordered);
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0].height, 1000, 'first write wins even when given last');
+  });
+
+  it('C1: uses the blockheight field — the daemon’s native name', () => {
+    const out = extractVdxfHistory(
+      [{ blockheight: 900, identity: { contentmultimap: { [REVIEW]: [review('bh', 5)] } } }], REVIEW);
+    assert.strictEqual(out[0].height, 900);
+  });
+
+  it('C2: decodes a makeSubDD DataDescriptor-wrapped review', () => {
+    const { makeSubDD } = require('../dist/onboarding/vdxf.js');
+    const wrapped = makeSubDD(REVIEW, JSON.stringify({ jobHash: 'dd1', buyer: 'iB', rating: 4, timestamp: 1, signature: 's' }));
+    const out = decodeReviewHistory([{ height: 10, identity: { contentmultimap: { [REVIEW]: [wrapped] } } }]);
+    assert.strictEqual(out.length, 1, 'a DD-wrapped record is wrapped, not malformed — must not be dropped');
+    assert.strictEqual(out[0].jobHash, 'dd1');
+    assert.strictEqual(out[0].rating, 4);
+  });
+
+  it('C3: an identical multi-value array across two snapshots is ONE historical entry set', () => {
+    const a = review('m1', 5), b = review('m2', 4);
+    const out = extractVdxfHistory([
+      { height: 1, identity: { contentmultimap: { [REVIEW]: [a, b] } } },
+      { height: 2, identity: { contentmultimap: { [REVIEW]: [a, b] } } },
+    ], REVIEW);
+    assert.strictEqual(out.length, 2, 'must be A,B — not A,B,A,B');
+  });
+
+  it('C6: a hex value decoding to a JSON array is rejected, not emitted as an all-null review', () => {
+    const arrHex = Buffer.from(JSON.stringify([1, 2, 3]), 'utf8').toString('hex');
+    const out = decodeReviewHistory([{ height: 1, identity: { contentmultimap: { [REVIEW]: [arrHex] } } }]);
+    assert.deepEqual(out, []);
+  });
+});

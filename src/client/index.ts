@@ -723,9 +723,13 @@ export class J41Client {
    *
    * ⚠️ REQUIRES BACKEND SUPPORT — as of 2026-07-30 this endpoint does not exist yet;
    * the request and proposed contract are in
-   * `docs/backend-responses/2026-07-30-dispatcher-reply.md`. Calling it against a
-   * backend without it yields a 404, which callers should treat as
-   * "history unavailable", not as "no history".
+   * `docs/backend-responses/2026-07-30-dispatcher-reply.md`.
+   *
+   * On 404 this throws `J41Error` with code `IDENTITY_HISTORY_UNAVAILABLE` so callers
+   * can distinguish "this backend cannot serve history" from a real failure. Note it
+   * CANNOT distinguish that from "no such identity" — both are 404 — so do not read a
+   * 404 as "this agent has no reviews". A known identity with zero updates must return
+   * 200 with an empty array; that requirement is pinned in the contract request.
    */
   async getIdentityHistory(
     params: { identity?: string; heightStart?: number; heightEnd?: number } = {},
@@ -737,7 +741,21 @@ export class J41Client {
     const path = params.identity
       ? `/v1/identity/${encodeURIComponent(params.identity)}/history${qs}`
       : `/v1/me/identity/history${qs}`;
-    return this.request<{ data: { history: unknown[] } }>('GET', path);
+    try {
+      return await this.request<{ data: { history: unknown[] } }>('GET', path);
+    } catch (e) {
+      const err = e as { statusCode?: number };
+      if (err && err.statusCode === 404) {
+        throw new J41Error(
+          'Identity history is unavailable: this platform does not expose ' +
+          'getidentityhistory, or the identity is unknown. A 404 here does NOT mean ' +
+          'the agent has no reviews.',
+          'IDENTITY_HISTORY_UNAVAILABLE',
+          404,
+        );
+      }
+      throw e;
+    }
   }
 
   /** Get raw identity data from chain (for offline tx building) */

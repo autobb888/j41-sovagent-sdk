@@ -23,7 +23,7 @@
  * `J41Client.getIdentityHistory()` for the proposed contract.
  */
 
-import { VDXF_KEYS } from '../onboarding/vdxf.js';
+import { VDXF_KEYS, DATA_DESCRIPTOR_KEY } from '../onboarding/vdxf.js';
 
 /** One complete identity snapshot as returned by getidentityhistory. */
 export interface IdentityHistorySnapshot {
@@ -61,23 +61,42 @@ export function extractVdxfHistory(
 ): VdxfHistoryEntry[] {
   if (!Array.isArray(snapshots) || snapshots.length === 0) return [];
 
-  const out: VdxfHistoryEntry[] = [];
-  let lastSerialized: string | null = null;
+  // Sort ascending by height rather than trusting input order. The endpoint that
+  // feeds this is not written yet, and if it ever returns newest-first the
+  // earliest-wins dedupe in decodeReviewHistory silently inverts to latest-wins —
+  // with every height still individually correct, so the bug would be invisible.
+  // Snapshots without a height keep their relative order and sort last.
+  const ordered = [...snapshots].sort((a, b) => {
+    const ha = snapshotHeight(a);
+    const hb = snapshotHeight(b);
+    if (ha === null && hb === null) return 0;
+    if (ha === null) return 1;
+    if (hb === null) return -1;
+    return ha - hb;
+  });
 
-  for (const snap of snapshots) {
+  const out: VdxfHistoryEntry[] = [];
+  let lastSnapshotSerialized: string | null = null;
+
+  for (const snap of ordered) {
     const cmm = snap && snap.identity ? snap.identity.contentmultimap : null;
     if (!cmm) continue;
     const raw = (cmm as Record<string, unknown>)[key];
     if (raw === undefined || raw === null) continue;
 
     const values = Array.isArray(raw) ? raw : [raw];
-    for (const value of values) {
-      let serialized: string;
-      try { serialized = JSON.stringify(value); } catch { serialized = String(value); }
-      if (serialized === lastSerialized) continue; // unchanged across this update
-      lastSerialized = serialized;
-      out.push({ height: snapshotHeight(snap), value });
-    }
+
+    // Compare the WHOLE array per snapshot. Comparing element-by-element against a
+    // single rolling value mis-handles multi-value arrays: [A,B] followed by an
+    // identical [A,B] would emit A,B,A,B, breaking this function's own contract
+    // that an unchanged value is one historical entry, not two.
+    let snapSerialized: string;
+    try { snapSerialized = JSON.stringify(values); } catch { snapSerialized = String(values); }
+    if (snapSerialized === lastSnapshotSerialized) continue;
+    lastSnapshotSerialized = snapSerialized;
+
+    const height = snapshotHeight(snap);
+    for (const value of values) out.push({ height, value });
   }
   return out;
 }
@@ -93,17 +112,46 @@ export interface HistoricalReview {
   raw: unknown;
 }
 
+/**
+ * Unwrap a makeSubDD DataDescriptor if present.
+ *
+ * `buildJobCompletionAdditions` and the job_record synthesis path write records as
+ * `{ [DATA_DESCRIPTOR_KEY]: { objectdata: { message: "<json>" }, ... } }`, so a
+ * decoder that only understands bare hex(JSON) silently drops every DD-wrapped
+ * record — values that are not malformed at all, merely wrapped.
+ */
+function unwrapDataDescriptor(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+  const dd = (value as Record<string, unknown>)[DATA_DESCRIPTOR_KEY] as Record<string, unknown> | undefined;
+  if (!dd) return value;
+  const od = dd.objectdata;
+  if (od && typeof od === 'object' && typeof (od as Record<string, unknown>).message === 'string') {
+    return (od as Record<string, unknown>).message;
+  }
+  if (typeof od === 'string') return od;
+  return value;
+}
+
 /** Decode one on-chain review value. Returns null when it is not decodable. */
 function decodeReviewValue(value: unknown): Record<string, unknown> | null {
   try {
-    if (typeof value === 'string') {
-      // On-chain reviews are hex(JSON).
-      if (!/^[0-9a-fA-F]+$/.test(value) || value.length % 2 !== 0) return null;
-      const json = Buffer.from(value, 'hex').toString('utf8');
+    const unwrapped = unwrapDataDescriptor(value);
+
+    if (typeof unwrapped === 'string') {
+      // Either hex(JSON) — the platform inbox path — or plain JSON from a DD message.
+      let json = unwrapped;
+      if (/^[0-9a-fA-F]+$/.test(unwrapped) && unwrapped.length % 2 === 0) {
+        json = Buffer.from(unwrapped, 'hex').toString('utf8');
+      }
       const parsed = JSON.parse(json);
-      return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+      // An array is not a review record; emitting it would yield an all-null row.
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
     }
-    if (value && typeof value === 'object') return value as Record<string, unknown>;
+    if (unwrapped && typeof unwrapped === 'object' && !Array.isArray(unwrapped)) {
+      return unwrapped as Record<string, unknown>;
+    }
   } catch { /* fall through */ }
   return null;
 }
