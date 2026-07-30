@@ -18,9 +18,10 @@
  * given snapshots, they walk them — so they are useful and testable regardless of
  * how the snapshots are obtained.
  *
- * NOTE: fetching the snapshots requires a platform endpoint that does not exist
- * yet (`/v1/me/identity/raw` returns current state only). See
- * `J41Client.getIdentityHistory()` for the proposed contract.
+ * Fetch the snapshots with `J41Client.getIdentityHistory()` — the platform exposes
+ * `/v1/me/identity/history` and `/v1/identity/:identityOrIAddr/history` (live and
+ * verified 2026-07-30). `/v1/me/identity/raw` returns current state only and cannot
+ * be used for this.
  */
 
 import { VDXF_KEYS, DATA_DESCRIPTOR_KEY } from '../onboarding/vdxf.js';

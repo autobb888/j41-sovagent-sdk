@@ -740,15 +740,18 @@ export class J41Client {
    * Pair with `decodeReviewHistory()` from `identity/history.js` to reconstruct an
    * agent's full verifiable review history.
    *
-   * ⚠️ REQUIRES BACKEND SUPPORT — as of 2026-07-30 this endpoint does not exist yet;
-   * the request and proposed contract are in
-   * `docs/backend-responses/2026-07-30-dispatcher-reply.md`.
+   * LIVE as of 2026-07-30 — verified against the platform: both paths return 200 with
+   * oldest-first snapshots (`identity`, `blockhash`, `height`, `output`), contentmultimap
+   * intact, and `heightStart`/`heightEnd` honoured. Requires auth on both paths.
    *
-   * On 404 this throws `J41Error` with code `IDENTITY_HISTORY_UNAVAILABLE` so callers
-   * can distinguish "this backend cannot serve history" from a real failure. Note it
-   * CANNOT distinguish that from "no such identity" — both are 404 — so do not read a
-   * 404 as "this agent has no reviews". A known identity with zero updates must return
-   * 200 with an empty array; that requirement is pinned in the contract request.
+   * On 404 this throws `J41Error` with code `IDENTITY_HISTORY_UNAVAILABLE`. Do NOT read
+   * that as "this agent has no reviews" — a 404 conflates three cases:
+   *   1. unknown identity (confirmed platform behaviour),
+   *   2. a height window entirely BELOW the identity's creation height (the daemon
+   *      resolves the identity at that height and it did not exist yet) — so paging
+   *      backwards will eventually 404 rather than returning an empty page,
+   *   3. a platform that does not serve history at all.
+   * An empty window that is mid-range or in the future correctly returns 200 + `[]`.
    */
   async getIdentityHistory(
     params: { identity?: string; heightStart?: number; heightEnd?: number } = {},
