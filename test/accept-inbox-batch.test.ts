@@ -329,3 +329,39 @@ describe('acceptInboxBatch — ack semantics (verified backend contract)', () =>
     assert.strictEqual(calls.getInboxItem, 0);
   });
 });
+
+describe('acceptInboxBatch — jobHash dedupe (backend §5a defence in depth)', () => {
+  const REVIEW_JSON = (jobHash: string, rating: number) =>
+    Buffer.from(JSON.stringify({ buyer: 'iB', jobHash, rating, timestamp: 1, signature: 's' }), 'utf8').toString('hex');
+
+  it('skips the write when the same jobHash is already on-chain in a DIFFERENT encoding', async () => {
+    // The platform's non-idempotent re-submit mints a fresh item for a review that
+    // was already written. Byte-comparison misses it if any field differs.
+    const { agent, calls } = makeAgent(
+      { r1: { id: 'r1', type: 'review', status: 'pending', vdxfData: { [REVIEW]: REVIEW_JSON('job-abc', 4) } } },
+      { onChain: { [REVIEW]: [REVIEW_JSON('job-abc', 5)] } }, // same job, different rating
+    );
+    const res = await agent.acceptInboxBatch([{ id: 'r1', type: 'review' }]);
+    assert.strictEqual(calls.broadcast, 0, 'a re-emit of an already-written review must not pay a second fee');
+    assert.deepEqual(res.acked, ['r1'], 'still acked so the backend stops re-serving it');
+  });
+
+  it('still writes when the jobHash is genuinely new', async () => {
+    const { agent, calls } = makeAgent(
+      { r1: { id: 'r1', type: 'review', status: 'pending', vdxfData: { [REVIEW]: REVIEW_JSON('job-new', 5) } } },
+      { onChain: { [REVIEW]: [REVIEW_JSON('job-old', 5)] } },
+    );
+    const res = await agent.acceptInboxBatch([{ id: 'r1', type: 'review' }]);
+    assert.strictEqual(calls.broadcast, 1, 'a different review must still be written');
+    assert.deepEqual(res.acked, ['r1']);
+  });
+
+  it('does not apply jobHash dedupe to attestations (different key, different semantics)', async () => {
+    const { agent, calls } = makeAgent(
+      { a1: pendingAttest('a1', 'newvalue') },
+      { onChain: { [ATTEST]: ['oldvalue'] } },
+    );
+    await agent.acceptInboxBatch([{ id: 'a1', type: 'attestation' }]);
+    assert.strictEqual(calls.broadcast, 1);
+  });
+});

@@ -20,7 +20,7 @@
  * tests are the regression proof that 52f8d07 is preserved.
  */
 
-import { VDXF_KEYS, makeSubDD, contentmultimapValueByteSize } from '../onboarding/vdxf.js';
+import { VDXF_KEYS, makeSubDD, contentmultimapValueByteSize, DATA_DESCRIPTOR_KEY } from '../onboarding/vdxf.js';
 
 export type InboxAcceptType = 'review' | 'attestation' | 'job_record';
 
@@ -186,6 +186,62 @@ export interface InboxBatchResult {
   deferred: Array<{ id: string; type: string; reason: string }>;
   /** Items the backend already reported as non-pending when fetched. */
   alreadyDone: string[];
+}
+
+/**
+ * True when a review for `jobHash` is already recorded on-chain under `key`.
+ *
+ * Defence in depth against non-idempotent re-emits: the platform's
+ * `POST /v1/reviews` can mint a fresh inbox item for a review that was already
+ * written, which would then be written to the identity a second time — a redundant
+ * update and a redundant 10,000-sat fee.
+ *
+ * `valueAlreadyOnChain` only catches a byte-identical re-emit; this catches one that
+ * differs in any field while carrying the same `jobHash`, which is the property that
+ * actually identifies a review. Compares by decoded jobHash, so it works for both
+ * hex(JSON) and DataDescriptor-wrapped records.
+ */
+export function jobHashAlreadyOnChain(
+  onChain: Record<string, unknown>,
+  key: string,
+  jobHash: string | null | undefined,
+): boolean {
+  if (!jobHash || !onChain) return false;
+  const existing = onChain[key];
+  if (existing === undefined || existing === null) return false;
+  for (const v of (Array.isArray(existing) ? existing : [existing])) {
+    if (extractJobHash(v) === jobHash) return true;
+  }
+  return false;
+}
+
+/** Best-effort jobHash extraction from an on-chain or inbox record value. */
+export function extractJobHash(value: unknown): string | null {
+  try {
+    let v: unknown = value;
+    // Unwrap a makeSubDD DataDescriptor if present.
+    if (v && typeof v === 'object') {
+      const dd = (v as Record<string, unknown>)[DATA_DESCRIPTOR_KEY] as Record<string, unknown> | undefined;
+      if (dd) {
+        const od = dd.objectdata;
+        v = od && typeof od === 'object' && typeof (od as Record<string, unknown>).message === 'string'
+          ? (od as Record<string, unknown>).message
+          : od;
+      }
+    }
+    if (typeof v === 'string') {
+      let json = v;
+      if (/^[0-9a-fA-F]+$/.test(v) && v.length % 2 === 0) json = Buffer.from(v, 'hex').toString('utf8');
+      const parsed = JSON.parse(json);
+      const jh = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).jobHash : null;
+      return typeof jh === 'string' ? jh : null;
+    }
+    if (v && typeof v === 'object') {
+      const jh = (v as Record<string, unknown>).jobHash;
+      return typeof jh === 'string' ? jh : null;
+    }
+  } catch { /* not decodable */ }
+  return null;
 }
 
 /** Safe message extraction — a non-Error throw must not break a catch block. */

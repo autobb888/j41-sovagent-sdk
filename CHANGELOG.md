@@ -44,6 +44,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`InboxBatchResult.expiryHeight`** so callers can tell a pending write that is
   provably dead from one that is merely slow.
 
+- **Identity history — `getIdentityHistory()`, `extractVdxfHistory()`,
+  `decodeReviewHistory()`.** Every record type lives under ONE fixed VDXF key that
+  each update REPLACES, so current state shows only the newest review however many
+  an agent has received. That is not data loss: Verus retains a complete identity
+  snapshot at every update height, and these reconstruct the timeline from it.
+  Verified live against 30 real snapshots — recovers a review absent from current
+  state, correctly collapses a value unchanged across three consecutive updates.
+
+- **`getInbox(status, limit, type)`** — server-side type filter. Informational
+  items are never consumed and accumulate; because the platform returns
+  newest-first, a large backlog could push a genuine review past the limit window
+  and make it invisible with no error. Safe against a backend without the filter
+  (unknown params are ignored).
+
+- **`jobHashAlreadyOnChain()` / `extractJobHash()`** — skip a redundant identity
+  write (and its fee) when a review for that `jobHash` is already on-chain in any
+  encoding. `valueAlreadyOnChain` only catches a byte-identical re-emit; the
+  platform's review re-submit is not idempotent, so a re-emit differing in any
+  field previously paid a second fee.
+
 ### Changed
 
 - `acceptReview`, `acceptAttestationTuple`, `acceptJobRecord` now delegate their

@@ -694,8 +694,27 @@ export class J41Client {
   // ------------------------------------------
 
   /** Get pending inbox items */
-  async getInbox(status = 'pending', limit = 20): Promise<{ data: InboxItem[]; meta: { pendingCount: number } }> {
+  /**
+   * List inbox items.
+   *
+   * `type` filters to specific item types (comma-joined server-side). Strongly
+   * recommended for chain-write consumers: informational items (`job_accepted`,
+   * `job_delivered`, `notification`) are never consumed and accumulate, and because
+   * the platform returns newest-first, a large informational backlog can push a
+   * genuine review past the `limit` window and make it invisible with no error
+   * anywhere. Passing `type` makes that starvation impossible.
+   *
+   * Older backends ignore an unknown query param rather than failing, so passing
+   * `type` is safe against a platform that has not deployed the filter yet — you
+   * simply get the unfiltered list, i.e. today's behaviour.
+   */
+  async getInbox(
+    status = 'pending',
+    limit = 20,
+    type?: string | string[],
+  ): Promise<{ data: InboxItem[]; meta: { pendingCount: number } }> {
     const query = new URLSearchParams({ status, limit: String(limit) });
+    if (type) query.set('type', Array.isArray(type) ? type.join(',') : type);
     return this.request<{ data: InboxItem[]; meta: { pendingCount: number } }>('GET', `/v1/me/inbox?${query}`);
   }
 

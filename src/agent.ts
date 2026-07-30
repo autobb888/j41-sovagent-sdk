@@ -26,6 +26,7 @@ import type { JobHandler, JobHandlerConfig } from './jobs/types.js';
 import { MAX_ACCEPT_ATTEMPTS, recordAcceptFailure, clearAcceptFailure, pruneAcceptFailures } from './jobs/accept-retry.js';
 import {
   buildInboxVdxfAdditions, additionsByteSize, errMsg, isAlreadyProcessed, valueAlreadyOnChain,
+  jobHashAlreadyOnChain, extractJobHash,
   MAX_BATCH_ADDITION_BYTES,
 } from './inbox/vdxf-gate.js';
 import type { InboxAcceptType, InboxBatchItemRef, InboxBatchResult } from './inbox/vdxf-gate.js';
@@ -1650,7 +1651,17 @@ export class J41Agent extends EventEmitter {
     let runningBytes = 0;
     for (const c of candidates) {
       const keys = Object.keys(c.additions);
-      if (keys.every(k => valueAlreadyOnChain(onChain, k, c.additions[k]))) {
+      // Skip the write when this record is already on-chain — either byte-identical,
+      // or (for reviews) a different encoding of the same jobHash. The platform's
+      // review re-submit is not idempotent, so without the jobHash check a re-emit
+      // costs a redundant identity update and a redundant fee.
+      const alreadyPresent = keys.every(k => {
+        if (valueAlreadyOnChain(onChain, k, c.additions[k])) return true;
+        if (k !== VDXF_KEYS.review.record) return false;
+        const jh = extractJobHash((c.additions[k] || [])[0]);
+        return jobHashAlreadyOnChain(onChain, k, jh);
+      });
+      if (alreadyPresent) {
         result.written.push(c.ref); // needs only its ack, no chain write
         continue;
       }
