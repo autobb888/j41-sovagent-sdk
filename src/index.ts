@@ -285,6 +285,8 @@ export {
   additionsByteSize,
   isAlreadyProcessed,
   valueAlreadyOnChain,
+  jobHashAlreadyOnChain,
+  extractJobHash,
   MAX_BATCH_ADDITION_BYTES,
 } from './inbox/vdxf-gate.js';
 export type {

@@ -5,6 +5,16 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.1] - 2026-07-30
+
+### Fixed
+
+- Export `jobHashAlreadyOnChain` / `extractJobHash` from `src/index.ts`. They were
+  documented in 2.12.0 as public API but only imported internally by `agent.ts`, so
+  the dedupe worked while the helpers were unreachable to any external consumer.
+  Caught by a clean-install check, not by the unit suite — the tests import from
+  `dist/agent.js`, where the internal path resolves fine.
+
 ## [2.12.0] - 2026-07-29
 
 ### Added
