@@ -290,3 +290,9 @@ export {
 export type {
   InboxAcceptType, InboxItemLike, InboxBatchItemRef, InboxBatchResult,
 } from './inbox/vdxf-gate.js';
+
+// Identity history — reconstruct on-chain record history from getidentityhistory
+// snapshots. Needed because each record type lives under one fixed VDXF key that
+// every update replaces, so current state shows only the newest value.
+export { extractVdxfHistory, decodeReviewHistory } from './identity/history.js';
+export type { IdentityHistorySnapshot, VdxfHistoryEntry, HistoricalReview } from './identity/history.js';

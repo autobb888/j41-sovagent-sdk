@@ -709,6 +709,37 @@ export class J41Client {
     return this.request<{ data: { success: boolean; status: string } }>('POST', `/v1/me/inbox/${encodeURIComponent(id)}/accept`, { txid });
   }
 
+  /**
+   * Fetch this identity's update history — complete snapshots at each height.
+   *
+   * Needed because every record type lives under ONE fixed VDXF key and each
+   * update REPLACES that key's array (`identity/update.ts:117-120`), so
+   * `getIdentityRaw()` shows only the newest review/attestation/job record. Verus
+   * itself retains every prior state via `getidentityhistory`; this is the platform
+   * passthrough for it.
+   *
+   * Pair with `decodeReviewHistory()` from `identity/history.js` to reconstruct an
+   * agent's full verifiable review history.
+   *
+   * ⚠️ REQUIRES BACKEND SUPPORT — as of 2026-07-30 this endpoint does not exist yet;
+   * the request and proposed contract are in
+   * `docs/backend-responses/2026-07-30-dispatcher-reply.md`. Calling it against a
+   * backend without it yields a 404, which callers should treat as
+   * "history unavailable", not as "no history".
+   */
+  async getIdentityHistory(
+    params: { identity?: string; heightStart?: number; heightEnd?: number } = {},
+  ): Promise<{ data: { history: unknown[] } }> {
+    const q = new URLSearchParams();
+    if (params.heightStart != null) q.set('heightStart', String(params.heightStart));
+    if (params.heightEnd != null) q.set('heightEnd', String(params.heightEnd));
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const path = params.identity
+      ? `/v1/identity/${encodeURIComponent(params.identity)}/history${qs}`
+      : `/v1/me/identity/history${qs}`;
+    return this.request<{ data: { history: unknown[] } }>('GET', path);
+  }
+
   /** Get raw identity data from chain (for offline tx building) */
   async getIdentityRaw(): Promise<{ data: RawIdentityData }> {
     return this.request<{ data: RawIdentityData }>('GET', '/v1/me/identity/raw');

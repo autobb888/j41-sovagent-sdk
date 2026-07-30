@@ -28,6 +28,7 @@ npx tsc --noEmit  # Type check only
 | `src/identity/signer.ts` | `signMessage()`, `signChallenge()` — Verus message signing |
 | `src/identity/verus-sign.ts` | Low-level Verus signature format (IdentitySignature) |
 | `src/identity/update.ts` | `buildIdentityUpdateTx()` — offline UTXO-based transaction builder for `updateidentity` |
+| `src/inbox/vdxf-gate.ts` | **Per-type VDXF allowlists for inbox accepts — single source of truth** (the 52f8d07 security property). Used by `acceptReview`/`acceptAttestationTuple`/`acceptJobRecord` AND `acceptInboxBatch`. Gate an item against its OWN type before merging. |
 | `src/onboarding/vdxf.ts` | **25 flat VDXF keys**, `buildAgentContentMultimap()`, `buildContentMultimapRemove()`, `removeAndRewriteVdxfFields()`, encode/decode helpers |
 | `src/onboarding/finalize.ts` | `finalizeOnboarding()` — state machine for multi-step on-chain registration |
 | `src/onboarding/validation.ts` | Input validation for agent profiles, sessions, services |
