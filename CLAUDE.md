@@ -67,6 +67,14 @@ Each key is an i-address. Values are wrapped in `makeSubDD(iAddr, jsonString)` (
 
 ### VDXF Update Protocol
 
+**⚠️ contentmultimap keys MUST be in ascending hash160 order.** Verus returns them sorted; if you submit them unsorted the daemon rejects the transaction with a bare `-25 - bad-txns-failed-precheck` that names nothing. This is NOT documented anywhere. `buildIdentityUpdateTx()` sorts before serializing — do not remove that.
+
+```js
+const hash160Hex = iAddr => Buffer.from(bs58check.decode(iAddr).slice(1)).toString('hex');
+```
+
+Until 2026-08-04 we built the map in JS insertion order, so *replacing* a key worked by accident while *adding* one appended it at the end and failed. Net effect: **no identity could ever gain a VDXF key it did not already have** — dispute policies, new profile fields, and the action-3 `MULTIMAPREMOVE_KEY` were all unwritable, and the first-ever review/attestation/job-record write to a fresh agent would have been rejected. If something on-chain "silently never landed", check this first.
+
 **ONE transaction.** `buildIdentityUpdateTx()` serializes the FULL identity: it copies every existing contentmultimap key forward, then replaces only the keys passed in `vdxfAdditions`. So updating a field is a single write — untouched keys survive verbatim, and the replaced key's prior value stays retrievable via `getidentityhistory`. Writing several distinct keys at once is normal (the inbox batch path writes `job_record` + `attestation` + `review` together).
 
 `removeAndRewriteVdxfFields()` does this (name kept for API compatibility; it no longer removes anything).

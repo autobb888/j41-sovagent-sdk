@@ -11,6 +11,15 @@ import { Identity, IdentityScript } from 'verus-typescript-primitives';
 
 import type { RawIdentityData, Utxo } from '../client/index.js';
 import { assertContentmultimapValueSizes } from '../onboarding/vdxf.js';
+import bs58check from 'bs58check';
+
+/**
+ * hash160 of a VDXF i-address — how contentmultimap keys are actually serialized
+ * on-chain, and therefore the order the daemon expects them in.
+ */
+function hash160Hex(iAddr: string): string {
+  return Buffer.from(bs58check.decode(iAddr).slice(1)).toString('hex');
+}
 
 const DEFAULT_FEE = 10000; // 0.0001 VRSC in satoshis
 const SATS_PER_COIN = 100000000;
@@ -119,6 +128,31 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
     currentCmm[key] = [...values];
   }
 
+  // Serialize contentmultimap keys in canonical hash160 order.
+  //
+  // NOT cosmetic — this is a correctness requirement the daemon enforces but does
+  // not document. Verus returns the map already hash160-sorted; a JS object
+  // preserves insertion order, so REPLACING a key kept the order valid by
+  // accident while ADDING one appended it at the end and broke the ordering. The
+  // daemon then rejects the transaction with a bare
+  // `-25 bad-txns-failed-precheck`, which names nothing.
+  //
+  // Symptom this caused (2026-08-04): no identity could ever gain a VDXF field it
+  // did not already have — dispute policies, new profile fields, and the
+  // action-3 MULTIMAPREMOVE key (itself a new key, hence `update-profile`'s
+  // two-phase failure) were all unwritable. Replacing an existing value worked,
+  // which made it look like a chain-side restriction on new keys. It was ours.
+  //
+  // Proven by pre-inserting a new key in sorted position and broadcasting the
+  // otherwise-identical transaction: accepted (agent-1 tx 68875887).
+  const sortedCmm: Record<string, unknown[]> = {};
+  for (const key of Object.keys(currentCmm).sort((a, b) => {
+    const ha = hash160Hex(a), hb = hash160Hex(b);
+    return ha < hb ? -1 : ha > hb ? 1 : 0;
+  })) {
+    sortedCmm[key] = currentCmm[key];
+  }
+
   // 2. Build updated identity JSON (matching getidentity RPC output format)
   const idJson: Record<string, unknown> = {
     version: identityData.identity.version ?? 3,
@@ -128,7 +162,7 @@ export function buildIdentityUpdateTx(params: IdentityUpdateParams): string {
     parent: identityData.identity.parent,
     name: identityData.identity.name,
     contentmap: identityData.identity.contentmap || {},
-    contentmultimap: currentCmm,
+    contentmultimap: sortedCmm,
     revocationauthority: revocationauthority || identityData.identity.revocationauthority,
     recoveryauthority: recoveryauthority || identityData.identity.recoveryauthority,
     systemid: identityData.identity.systemid || identityData.identity.parent,

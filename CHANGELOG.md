@@ -5,6 +5,41 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.13.1] - 2026-08-04
+
+### Fixed
+
+- **`buildIdentityUpdateTx` now serializes contentmultimap keys in canonical hash160
+  order — without this, no identity could ever GAIN a VDXF key it did not already
+  have.** Verus returns the map hash160-sorted; we copied it into a JS object
+  (insertion order) and appended new keys at the end, breaking the ordering. The
+  daemon rejects that with a bare `-25 - bad-txns-failed-precheck` that names
+  nothing. Replacing an existing key preserved the order by accident and worked,
+  which is why this went unnoticed.
+
+  **TWO causes, not one.** Our serialization was never canonical — but the daemon
+  tolerated it for four months. Identity history proves unsorted new-key ADDs were
+  ACCEPTED as recently as 2026-07-31: agent-6 h=1170503 added `job.record`, and
+  h=1170504 added `review.attestation` + `review.record` (round-3 txs `d2f30678`
+  and `51b309df`), all of which our builder would have appended out of order.
+  Enforcement tightened somewhere in h=(1170504, ~1175944), i.e. 08-01 → 08-04.
+  So the 2.13.0 note below is right that something changed on the network side,
+  and wrong to imply our payload was ever correct.
+
+  Practical effect of the window: dispute policies and any new profile field were
+  unwritable on every existing agent, and `update-profile`'s action-3 remove failed
+  because `MULTIMAPREMOVE_KEY` is itself a new key. `TX_REJECTED` classifies as
+  `contention`, which never escalates — so those failures retried silently rather
+  than dead-lettering.
+
+  NOT caused by this bug (checked): the backend's report of reviews "accepted but
+  never landed" (all such activity predates enforcement; agent-2 grew 5→22 keys
+  incrementally through this builder), and agent-11/url2's single-key state (an
+  April onboarding gap — profile was never published).
+
+  Proven by pre-inserting a new key in sorted position (agent-1 tx `68875887`);
+  after the fix all 9 agents gained a `disputePolicy` key via `update-profile`.
+
 ## [2.13.0] - 2026-08-04
 
 ### Fixed
