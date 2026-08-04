@@ -5,6 +5,26 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.0] - 2026-08-04
+
+### Fixed
+
+- **Broker-mode agents no longer attempt review accepts they structurally cannot
+  perform.** The chat client auto-accepted incoming reviews via `acceptReview()`,
+  which builds and signs an identity transaction locally. A job container holds
+  no WIF by design — that is the point of the host-side signing broker — so this
+  could only ever throw, twice per review:
+  `Cannot accept review <id>: WIF key and i-address required`.
+  It now early-returns when `usesRemoteSigner` is true, leaving the inbox item
+  `pending` for the host dispatcher's sweep, which owns that write and
+  structurally requires the local WIF.
+
+  The guard is **not** weakened — `acceptReview` still refuses without a WIF.
+  Local-WIF agents are unaffected, and `review:received` still emits either way,
+  so third-party consumers running their own accept logic keep their hook.
+
+  Minor, not patch: the observable behaviour of a broker-mode agent changes.
+
 ## [2.13.1] - 2026-08-04
 
 ### Fixed
