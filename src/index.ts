@@ -160,6 +160,7 @@ export {
   MULTIMAPREMOVE_KEY,
   buildContentMultimapRemove,
   removeAndRewriteVdxfFields,
+  resolveVdxfFieldRef,
   type CanonicalAgentUpdateParams,
   type CanonicalIdentitySnapshot,
   type VdxfUpdateParams,

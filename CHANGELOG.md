@@ -5,6 +5,47 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`removeAndRewriteVdxfFields()` is now a SINGLE transaction — `update-profile` was
+  completely broken.** The previous flow broadcast a `contentmultimapremove` (action 3)
+  transaction, waited up to 20 minutes for a block, then wrote. As of 2026-08-04 that
+  remove transaction is **rejected by the network** (`400 TX_REJECTED`), reproduced on
+  agents both with and without recent identity writes, so no profile update could
+  complete. The remove phase was never needed for *replacing* a value:
+  `buildIdentityUpdateTx` serializes the full identity, copying every existing
+  contentmultimap key forward and replacing only those named in `vdxfAdditions`.
+
+  Verified live: agent-3 `b7d49d25` (14/14 keys, 2/2 reviews preserved), agent-7
+  `9e890c6d` (description + `review.record` in ONE tx, 13/13 keys, 4/4 reviews),
+  agent-4 `4294bfc8` via the fixed CLI.
+
+  Side effects: no intermediate 20-minute block wait, and one transaction fee instead
+  of two.
+
+  **Known trade-off:** the original two-tx design (b399d18, live-proven 2026-04-09) was
+  motivated by daemon-side read aggregation — *"removal MUST confirm in an earlier block
+  than the rewrite, otherwise `getidentitycontent` aggregation order is wrong."* A
+  consumer reading via `getidentitycontent`-style aggregation may now observe old and new
+  values under a key. All in-repo readers are unaffected (`parseFlatEntry` takes the last
+  entry; history reconstruction is per-snapshot).
+
+- Added six regression tests for `removeAndRewriteVdxfFields` (`test/update-vdxf-fields.test.ts`).
+  The function previously had **zero** coverage, which is how it shipped broken.
+
+### Changed
+
+- `VdxfUpdateResult.removeTxid` is now `string | null` (always `null`) and `blocksWaited`
+  is always `0`; both are `@deprecated`. **Breaking for TypeScript consumers** assigning
+  `removeTxid` to a `string`.
+- `buildContentMultimapRemove()` is `@deprecated` — its output is currently network-rejected.
+  Still exported for npm consumers. Deleting a key under full-state serialization should be
+  key omission, which `buildIdentityUpdateTx` does not yet expose.
+- `fieldsToUpdate` is documented as accepting any `resolveVdxfFieldRef` form (bare leaf name,
+  dotted group path, or raw i-address) rather than `VDXF_KEYS.agent` names only.
+
 ## [2.12.1] - 2026-07-30
 
 ### Fixed

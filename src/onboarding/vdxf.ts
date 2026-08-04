@@ -230,6 +230,52 @@ export function assertContentmultimapValueSizes(cmm: Record<string, unknown[]>):
   }
 }
 
+const I_ADDR_RE = /^i[1-9A-HJ-NP-Za-km-z]{33}$/;
+
+/**
+ * Resolve a caller-supplied field reference to a VDXF i-address.
+ *
+ * Accepts three forms: (1) a raw i-address, (2) a namespaced `group.field` path
+ * (e.g. `review.attestation`), (3) a bare leaf name IF unambiguous. Bare leaf
+ * names that exist in more than one namespace (`attestation` →
+ * review/workspace; `record` → review/bounty/job) THROW, listing the candidates.
+ *
+ * This replaces a flat `{leaf: iAddr}` map that silently let the LAST group in
+ * declaration order win — so a caller asking to prune `attestation` actually hit
+ * `workspace.attestation`, and `record` hit `job.record`. Removing/rewriting a
+ * review field by bare name was therefore silently wrong.
+ */
+export function resolveVdxfFieldRef(ref: string): string {
+  // 1. Raw i-address — must be a known key (typo / foreign-key safety).
+  if (I_ADDR_RE.test(ref)) {
+    for (const keys of Object.values(VDXF_KEYS)) {
+      if (Object.values(keys as Record<string, string>).includes(ref)) return ref;
+    }
+    throw new Error(`Unknown VDXF i-address: ${ref} (not in VDXF_KEYS)`);
+  }
+  // 2. Namespaced 'group.field'.
+  if (ref.includes('.')) {
+    const dot = ref.indexOf('.');
+    const iAddr = (VDXF_KEYS as Record<string, Record<string, string>>)[ref.slice(0, dot)]?.[ref.slice(dot + 1)];
+    if (!iAddr) throw new Error(`Unknown VDXF field path: ${ref}`);
+    return iAddr;
+  }
+  // 3. Bare leaf name — only if it names exactly one key.
+  const matches: Array<[string, string]> = [];
+  for (const [group, keys] of Object.entries(VDXF_KEYS)) {
+    const iAddr = (keys as Record<string, string>)[ref];
+    if (iAddr) matches.push([`${group}.${ref}`, iAddr]);
+  }
+  if (matches.length === 1) return matches[0][1];
+  if (matches.length > 1) {
+    throw new Error(
+      `Ambiguous VDXF field '${ref}' — it exists in multiple namespaces: ` +
+      `${matches.map(([p]) => p).join(', ')}. Pass the namespaced path (e.g. 'review.${ref}') or the i-address.`,
+    );
+  }
+  throw new Error(`Unknown VDXF field: ${ref}`);
+}
+
 // --- Legacy helpers (kept for backwards compat during transition) ---
 
 export function encodeVdxfValue(value: unknown): string {
@@ -890,6 +936,12 @@ export function mergeContentMultimap(
  * @param vdxfKeyAddresses - i-addresses of VDXF keys to remove
  * @returns updateidentity-ready JSON object with removal instructions
  */
+/**
+ * @deprecated Its output (action-3 removal) is currently REJECTED by the network
+ * — see `removeAndRewriteVdxfFields`. Kept exported because npm consumers may
+ * import it. For deletion under full-state serialization the correct shape is to
+ * omit the key when rebuilding, not to emit a removal instruction.
+ */
 export function buildContentMultimapRemove(
   identityName: string,
   vdxfKeyAddresses: string[],
@@ -921,7 +973,11 @@ export interface VdxfUpdateParams {
   agent: { client: any; _client?: any };
   /** Full identity name, e.g. "myagent.agentplatform@" */
   identityName: string;
-  /** Map of agent field name → new value (keys from VDXF_KEYS.agent) */
+  /**
+   * Map of field reference → new value. Resolved by `resolveVdxfFieldRef`, so
+   * any of: a bare unambiguous leaf name (`description`), a dotted group path
+   * (`review.record`), or a raw known i-address. NOT limited to VDXF_KEYS.agent.
+   */
   fieldsToUpdate: Record<string, string>;
   /** Verus network */
   chain: 'verus' | 'verustest';
@@ -932,16 +988,70 @@ export interface VdxfUpdateParams {
 }
 
 export interface VdxfUpdateResult {
-  removeTxid: string;
+  /**
+   * @deprecated Always `null` since the single-transaction rewrite (2026-08-04).
+   * Kept so existing callers that print it keep compiling; there is no separate
+   * remove transaction any more. Will be removed in a future major.
+   */
+  removeTxid: string | null;
   writeTxid: string;
+  /**
+   * @deprecated Always 0 — no inter-transaction block wait is performed.
+   * Will be removed in a future major.
+   */
   blocksWaited: number;
 }
 
 /**
- * Remove old VDXF values and write new ones in two separate transactions.
- * Waits for block confirmation between remove and write (required by Verus daemon).
+ * Update VDXF profile fields in ONE transaction.
  *
- * @throws If block confirmation times out (20 minutes) or transaction fails
+ * `buildIdentityUpdateTx` copies the identity's existing contentmultimap forward
+ * and replaces only the keys named in `vdxfAdditions` (`identity/update.ts`), so
+ * setting a field's new value is sufficient — every other key is preserved
+ * untouched, and the previous value of the updated key stays retrievable via
+ * `getidentityhistory`. Writing several distinct keys in a single transaction is
+ * the same mechanism the inbox batch path uses for job_record + attestation +
+ * review.
+ *
+ * HISTORY — this used to be a two-transaction remove-then-rewrite (b399d18).
+ * That design was NOT arbitrary and it DID work: it was live-proven on
+ * verustest 2026-04-09. Its stated reason was read-side, not write-side —
+ * "removal MUST confirm in an earlier block than the rewrite, otherwise
+ * getidentitycontent aggregation order is wrong."
+ *
+ * What changed: on 2026-08-04 the action-3 remove transaction is rejected by
+ * the network (`400 TX_REJECTED`) on agents both with and without recent
+ * identity writes, so `update-profile` could not complete at all. Whether the
+ * daemon, consensus rules, or the platform's broadcast policy changed is
+ * unknown — the platform returns no daemon reason (see the TX_REJECTED
+ * observability ask in docs/testing/2026-08-04-*).
+ *
+ * The single-transaction write below was verified working on the same agents in
+ * the same session:
+ *   - agent-3, tx b7d49d25 @ height 1175944 — description replaced, 14/14 cmm
+ *     keys preserved, both historical reviews intact.
+ *   - agent-7, tx 9e890c6d @ height 1175945 — description + review.record
+ *     written together in one tx, 13/13 keys preserved, all 4 reviews intact.
+ *
+ * KNOWN TRADE-OFF, inherited from dropping the remove: a consumer that reads via
+ * daemon-side `getidentitycontent`-style AGGREGATION (rather than per-snapshot
+ * replace semantics) can now observe the old and new values accumulated under
+ * the key instead of only the new one. Every in-repo reader is safe —
+ * `parseFlatEntry` takes the last entry, and history reconstruction is
+ * per-snapshot — but an external consumer doing daemon aggregation is not
+ * covered by that guarantee.
+ *
+ * Deleting a key outright (rather than replacing its value) is NOT solved here.
+ * `buildContentMultimapRemove` is still exported but its output is currently
+ * network-rejected; under full-state serialization the right shape for deletion
+ * is to omit the key when rebuilding, which `buildIdentityUpdateTx` does not yet
+ * expose.
+ *
+ * CAUTION: this does NOT route through the dispatcher's pending-write
+ * confirmation gate. Do not call it while an inbox identity transaction for the
+ * same agent is unconfirmed, or the two will double-spend the same prevOutput.
+ *
+ * @throws If the transaction fails to build or is rejected on broadcast
  */
 export async function removeAndRewriteVdxfFields(
   params: VdxfUpdateParams,
@@ -950,23 +1060,16 @@ export async function removeAndRewriteVdxfFields(
   const client = agent.client || agent._client;
   const log = (msg: string) => { if (onProgress) onProgress(msg); };
 
-  // Resolve field names to i-addresses
-  const fieldToIAddr: Record<string, string> = {};
-  for (const [group, keys] of Object.entries(VDXF_KEYS)) {
-    for (const [field, iAddr] of Object.entries(keys as Record<string, string>)) {
-      fieldToIAddr[field] = iAddr;
-    }
+  // Resolve field names to i-addresses FIRST — throws on unknown/ambiguous
+  // names, so a typo fails before anything is broadcast rather than writing to
+  // the wrong key.
+  const writeAdditions: Record<string, unknown[]> = {};
+  for (const [fieldName, newValue] of Object.entries(fieldsToUpdate)) {
+    const iAddr = resolveVdxfFieldRef(fieldName);
+    writeAdditions[iAddr] = [makeSubDD(iAddr, newValue)];
   }
 
-  const iAddressesToRemove: string[] = [];
-  for (const fieldName of Object.keys(fieldsToUpdate)) {
-    const iAddr = fieldToIAddr[fieldName];
-    if (!iAddr) throw new Error(`Unknown VDXF field: ${fieldName}`);
-    iAddressesToRemove.push(iAddr);
-  }
-
-  // ── PHASE 1: Remove old values ──
-  log('Phase 1: Removing old VDXF values...');
+  log(`Writing ${Object.keys(writeAdditions).length} VDXF field(s) in one transaction...`);
 
   const rawIdentity = await client.getIdentityRaw();
   const identityData = rawIdentity.data || rawIdentity; // unwrap { data: { identity, prevOutput } }
@@ -974,84 +1077,18 @@ export async function removeAndRewriteVdxfFields(
   const utxos = Array.isArray(rawUtxos) ? rawUtxos : (rawUtxos.utxos || []); // unwrap { utxos: [...] }
 
   const { buildIdentityUpdateTx } = await import('../identity/update.js');
+  const chainInfo = await client.getChainInfo();
 
-  // Fetch current chain tip so we can set a meaningful expiry on the remove tx.
-  const chainInfoBefore = await client.getChainInfo();
-
-  // Build remove payload — pass as vdxfAdditions under MULTIMAPREMOVE_KEY
-  const removeEntries = iAddressesToRemove.map(iAddr => ({
-    [MULTIMAPREMOVE_KEY]: {
-      version: 1,
-      action: 3,
-      entrykey: iAddr,
-    },
-  }));
-
-  const removeTxHex = buildIdentityUpdateTx({
+  // One transaction. buildIdentityUpdateTx copies every existing key forward and
+  // replaces only those in writeAdditions, so untouched fields — including
+  // review.record — survive verbatim.
+  const writeTxHex = buildIdentityUpdateTx({
     wif,
     identityData,
     utxos,
-    vdxfAdditions: {
-      [MULTIMAPREMOVE_KEY]: removeEntries,
-    },
-    network: chain,
-    expiryHeight: chainInfoBefore.blockHeight + IDENTITY_EXPIRY_DELTA,
-  });
-
-  const removeResult = await client.broadcast(removeTxHex);
-  const removeTxid = removeResult.txid || removeResult;
-  log(`Remove TX broadcast: ${removeTxid}`);
-
-  // ── PHASE 2: Wait for block confirmation ──
-  log('Phase 2: Waiting for block confirmation (can take 1-2 minutes)...');
-
-  const removeHeight = (await client.getChainInfo()).blockHeight;
-  let currentHeight = removeHeight;
-  let blocksWaited = 0;
-  const MAX_WAIT_MS = 20 * 60 * 1000; // 20 minutes
-  const POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
-  const startTime = Date.now();
-
-  while (currentHeight <= removeHeight) {
-    if (Date.now() - startTime > MAX_WAIT_MS) {
-      throw new Error(
-        `Block confirmation timed out after 20 minutes. Remove TX (${removeTxid}) may still be pending. ` +
-        `Do NOT retry the remove — wait for it to confirm, then run the write step manually.`
-      );
-    }
-    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-    const info = await client.getChainInfo();
-    currentHeight = info.blockHeight;
-    blocksWaited++;
-    if (blocksWaited % 2 === 0) {
-      log(`Still waiting... (${Math.round((Date.now() - startTime) / 1000)}s, height: ${currentHeight}, need: >${removeHeight})`);
-    }
-  }
-  log(`Block confirmed at height ${currentHeight} (waited ${blocksWaited * 30}s)`);
-
-  // ── PHASE 3: Write new values ──
-  log('Phase 3: Writing new VDXF values...');
-
-  // Re-fetch identity data and UTXOs (remove tx consumed them)
-  const freshRawIdentity = await client.getIdentityRaw();
-  const freshIdentityData = freshRawIdentity.data || freshRawIdentity;
-  const freshRawUtxos = await client.getUtxos();
-  const freshUtxos = Array.isArray(freshRawUtxos) ? freshRawUtxos : (freshRawUtxos.utxos || []);
-
-  // Build write payload — each field gets its own entry
-  const writeAdditions: Record<string, unknown[]> = {};
-  for (const [fieldName, newValue] of Object.entries(fieldsToUpdate)) {
-    const iAddr = fieldToIAddr[fieldName];
-    writeAdditions[iAddr] = [makeSubDD(iAddr, newValue)];
-  }
-
-  const writeTxHex = buildIdentityUpdateTx({
-    wif,
-    identityData: freshIdentityData,
-    utxos: freshUtxos,
     vdxfAdditions: writeAdditions,
     network: chain,
-    expiryHeight: currentHeight + IDENTITY_EXPIRY_DELTA,
+    expiryHeight: chainInfo.blockHeight + IDENTITY_EXPIRY_DELTA,
   });
 
   const writeResult = await client.broadcast(writeTxHex);
@@ -1064,5 +1101,5 @@ export async function removeAndRewriteVdxfFields(
   } catch {}
 
   log('VDXF update complete!');
-  return { removeTxid, writeTxid, blocksWaited };
+  return { removeTxid: null, writeTxid, blocksWaited: 0 };
 }

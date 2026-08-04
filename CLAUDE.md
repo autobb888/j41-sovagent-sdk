@@ -67,14 +67,15 @@ Each key is an i-address. Values are wrapped in `makeSubDD(iAddr, jsonString)` (
 
 ### VDXF Update Protocol
 
-**Two separate transactions in separate blocks** (Verus daemon requirement):
+**ONE transaction.** `buildIdentityUpdateTx()` serializes the FULL identity: it copies every existing contentmultimap key forward, then replaces only the keys passed in `vdxfAdditions`. So updating a field is a single write — untouched keys survive verbatim, and the replaced key's prior value stays retrievable via `getidentityhistory`. Writing several distinct keys at once is normal (the inbox batch path writes `job_record` + `attestation` + `review` together).
 
-1. `buildContentMultimapRemove(identityName, iAddresses)` → action 3 removal under `MULTIMAPREMOVE_KEY`
-2. Wait for block confirmation via `getChainInfo().blockHeight` polling
-3. Re-fetch identity + UTXOs (consumed by remove tx)
-4. `buildIdentityUpdateTx()` with new values as `vdxfAdditions`
+`removeAndRewriteVdxfFields()` does this (name kept for API compatibility; it no longer removes anything).
 
-`removeAndRewriteVdxfFields()` orchestrates this entire flow.
+**Do NOT reintroduce a remove phase.** Until 2026-08-04 this was a two-transaction `contentmultimapremove` (action 3) → wait a block → write. That worked when built (live-proven 2026-04-09) and its reason was read-side — *"removal MUST confirm in an earlier block than the rewrite, otherwise `getidentitycontent` aggregation order is wrong"* (b399d18). As of 2026-08-04 the remove tx is **rejected by the network** (`400 TX_REJECTED`, no daemon reason given), which broke `update-profile` entirely.
+
+Inherited trade-off: a consumer reading via daemon-side `getidentitycontent` **aggregation** may now see old+new values under a key. All in-repo readers are safe (`parseFlatEntry` takes the last entry; history reconstruction is per-snapshot).
+
+Deleting a key outright is unsolved — `buildContentMultimapRemove` is `@deprecated` and network-rejected; the right shape under full-state serialization is key omission.
 
 **Critical**: `buildIdentityUpdateTx()` filters out `MULTIMAPREMOVE_KEY` (`i5Zkx5Z7tEfh42xtKfwbJ5LgEWE9rEgpFY`) when copying existing CMM — prevents stale removal entries.
 
