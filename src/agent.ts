@@ -1144,6 +1144,22 @@ export class J41Agent extends EventEmitter {
     // Handle review notifications — auto-accept and update identity on-chain
     this.chatClient.onReviewReceived(async (event: ReviewReceivedEvent) => {
       this.emit('review:received', event);
+
+      // Broker mode (job containers): this agent has NO WIF by design — that is
+      // the whole point of the host-side signing broker. `acceptReview` builds
+      // and signs an identity transaction locally, so it can only ever throw
+      // here ("WIF key and i-address required"), surfacing as an unhandled
+      // error twice per review. The host dispatcher's inbox sweep owns this
+      // write; leaving the item `pending` is what lets it collect it, exactly
+      // as the on-chain identity update already defers.
+      if (this.usesRemoteSigner) {
+        console.log(
+          `[J41] Review received for job ${event.jobHash} (rating: ${event.rating}) — ` +
+          'left pending for the host inbox processor (broker mode)',
+        );
+        return;
+      }
+
       console.log(`[J41] Review received for job ${event.jobHash} (rating: ${event.rating}) — processing...`);
       try {
         await this.acceptReview(event.inboxId);
