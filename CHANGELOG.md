@@ -5,7 +5,7 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.12.2] - 2026-08-04
+## [2.13.0] - 2026-08-04
 
 ### Fixed
 
@@ -44,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spurious `detail: undefined` key appears when the platform sends none.
 
 ### Changed
+
+> Released as a **minor**, not a patch: `removeTxid`'s public type changed and the
+> documented two-transaction behaviour is gone. A patch must never change public
+> types. Not a major because the old path is network-rejected for everyone — old
+> versions are broken regardless — and a major would stop `^2.x` consumers from
+> receiving the fix automatically.
 
 - `VdxfUpdateResult.removeTxid` is now `string | null` (always `null`) and `blocksWaited`
   is always `0`; both are `@deprecated`. **Breaking for TypeScript consumers** assigning
