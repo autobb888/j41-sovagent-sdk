@@ -174,3 +174,28 @@ describe('removeAndRewriteVdxfFields — single transaction', () => {
     assert.ok(broadcasts[0].includes(keyMarker(DESC)), 'description key must be present');
   });
 });
+
+/**
+ * The platform returns the daemon's real rejection reason in `error.detail`
+ * (e.g. TX_REJECTED → "-25 - bad-txns-failed-precheck"). J41Error used to carry
+ * only message/code/statusCode and dropped it, so the single most useful field
+ * in a failed broadcast never reached a caller. Verified live 2026-08-04: the
+ * wire body had `detail`, the thrown error did not.
+ */
+describe('J41Error.detail plumbing', () => {
+  it('carries error.detail through from the response body', () => {
+    const { J41Error } = require('../dist/client/index.js');
+    const e = new J41Error('Transaction rejected by the network', 'TX_REJECTED', 400,
+      '-25 - bad-txns-failed-precheck');
+    assert.strictEqual(e.detail, '-25 - bad-txns-failed-precheck');
+    assert.strictEqual(e.code, 'TX_REJECTED');
+    assert.strictEqual(e.statusCode, 400);
+  });
+
+  it('leaves detail undefined when the platform sends none', () => {
+    const { J41Error } = require('../dist/client/index.js');
+    const e = new J41Error('nope', 'HTTP_ERROR', 500);
+    assert.strictEqual(e.detail, undefined);
+    assert.ok(!('detail' in e), 'must not add an undefined detail key');
+  });
+});

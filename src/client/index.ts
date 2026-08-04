@@ -213,6 +213,7 @@ export class J41Client {
           (error.message as string) || `HTTP ${response.status}`,
           (error.code as string) || 'HTTP_ERROR',
           response.status,
+          typeof error.detail === 'string' ? error.detail : undefined,
         );
       }
 
@@ -1205,6 +1206,7 @@ export class J41Client {
           (error.message as string) || `HTTP ${response.status}`,
           (error.code as string) || 'HTTP_ERROR',
           response.status,
+          typeof error.detail === 'string' ? error.detail : undefined,
         );
       }
 
@@ -1555,6 +1557,7 @@ export class J41Client {
           (error.message as string) || `HTTP ${response.status}`,
           (error.code as string) || 'HTTP_ERROR',
           response.status,
+          typeof error.detail === 'string' ? error.detail : undefined,
         );
       }
 
@@ -1989,12 +1992,30 @@ export class J41Client {
 export class J41Error extends Error {
   code: string;
   statusCode: number;
+  /**
+   * Upstream diagnostic detail from the platform's `error.detail`, when present.
+   *
+   * Added 2026-08-04. The platform began returning the daemon's actual
+   * `sendrawtransaction` error here (e.g. `TX_REJECTED` →
+   * `"-25 - bad-txns-failed-precheck"`), but this class dropped every field
+   * except message/code/statusCode, so the most useful part of a failure was
+   * discarded before any caller could see it — a broken `update-profile` took a
+   * two-agent bisection to diagnose for exactly this reason.
+   *
+   * `undefined` when the platform sent no detail. Never assume it is present.
+   *
+   * `declare` deliberately: a plain field declaration would emit the property as
+   * `undefined` on every instance, so `'detail' in err` would be true even when
+   * the platform sent nothing. Only set when there is a value.
+   */
+  declare detail?: string;
 
-  constructor(message: string, code: string, statusCode: number) {
+  constructor(message: string, code: string, statusCode: number, detail?: string) {
     super(message);
     this.name = 'J41Error';
     this.code = code;
     this.statusCode = statusCode;
+    if (detail !== undefined) this.detail = detail;
   }
 }
 
