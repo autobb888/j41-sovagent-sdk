@@ -427,11 +427,28 @@ export function buildAgentContentMultimap(
 
 /**
  * Detect whether a contentmultimap uses the legacy parent-keyed format.
- * Only triggers if the agent parent key is present (the main profile container).
- * Stray legacy keys (e.g. review parent from pre-migration) don't trigger legacy mode.
+ *
+ * FLAT WINS. The presence of the legacy agent parent key is NOT sufficient,
+ * because it is effectively permanent for any identity that existed before the
+ * 2026-03-28 flat-key migration: `getMyIdentity` / `getidentitycontent` return
+ * the AGGREGATED history, so a parent key written in March is still in the map
+ * today and forever. Keying off it alone routed every pre-migration agent to the
+ * legacy decoder, which knows nothing about the flat keys.
+ *
+ * Live consequence (2026-08-04): agents 1-5 (pre-migration) reported
+ * `no dispute policy on-chain — disputes will log only` while the flat
+ * `agent.disputePolicy` key was present and well-formed on all of them. Agents
+ * 6, 7, 11 and url2 (post-migration, no legacy key) decoded fine. A clean 5/4
+ * split with no other difference. Anything gated on a decoded profile field
+ * silently degraded for exactly the oldest, most-used agents.
+ *
+ * So: legacy only when the legacy container is present AND no flat agent key is.
  */
 function isLegacyFormat(cmm: Record<string, unknown[]>): boolean {
-  return !!cmm[PARENT_KEYS.agent];
+  if (!cmm[PARENT_KEYS.agent]) return false;
+  // Any flat agent key present ⇒ the identity has been migrated; decode flat.
+  const hasFlat = Object.values(VDXF_KEYS.agent).some((k) => !!cmm[k]);
+  return !hasFlat;
 }
 
 /**

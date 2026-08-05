@@ -5,6 +5,28 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.1] - 2026-08-04
+
+### Fixed
+
+- **Pre-migration identities silently decoded as legacy, losing every flat VDXF
+  field.** `isLegacyFormat()` returned true whenever the legacy agent parent key
+  was present — but that key is effectively permanent for any identity created
+  before the 2026-03-28 flat migration, because `getMyIdentity` /
+  `getidentitycontent` return the AGGREGATED history. A key written in March is
+  still in the map today and always will be. Every such identity was routed to
+  the legacy decoder, which knows nothing about the flat keys.
+
+  Live impact: 5 of 9 agents reported `no dispute policy on-chain — disputes
+  will log only` while the flat `agent.disputePolicy` key was present and
+  well-formed on all of them; their `displayName` was dropped the same way. The
+  four post-migration agents decoded fine — a clean 5/4 split with no other
+  difference. Anything gated on a decoded profile field degraded silently, and
+  it degraded worst for the OLDEST, most-used agents.
+
+  Detection is now flat-wins: legacy only when the legacy container is present
+  **and** no flat agent key is. Verified 9/9 live.
+
 ## [2.14.0] - 2026-08-04
 
 ### Fixed
