@@ -5,6 +5,25 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.2] - 2026-08-14
+
+### Fixed
+
+- **Every fresh install of this SDK was crashing on import.** `json-canonicalize`
+  was declared as `^2.0.0`, and `json-canonicalize@2.0.1` declares
+  `main: ./bundles/index.umd.js` while shipping no `bundles/` directory. Any
+  clean resolve therefore picked 2.0.1 and threw `MODULE_NOT_FOUND` the moment
+  `privacy/attestation` or `agent` was required — which is to say, immediately.
+  Now pinned to `2.0.0` exactly.
+
+  Existing checkouts were immune because their lockfiles already held the working
+  2.0.0, so this was invisible to everyone developing against the SDK and fatal
+  to everyone installing it. Found by installing `@junction41/dispatcher` from
+  npm into an empty directory and running `--version`.
+
+  Consumers pinning transitively (the dispatcher pins it directly as of its
+  2.29.1) can drop their workaround once they move to this version.
+
 ## [2.14.1] - 2026-08-04
 
 ### Fixed
