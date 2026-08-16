@@ -792,9 +792,14 @@ export class J41Agent extends EventEmitter {
   async downloadFileTo(jobId: string, fileId: string, outputDir?: string): Promise<string> {
     const fs = await import('fs');
     const path = await import('path');
-    const result = await this._client.downloadFile(jobId, fileId);
+    const result = await this.downloadFile(jobId, fileId);
     const dir = outputDir || process.cwd();
-    const filePath = path.join(dir, result.filename);
+    // Containment: never honor path segments in Content-Disposition filenames
+    const name = path.basename(String(result.filename || 'download')).replace(/\0/g, '');
+    if (!name || name === '.' || name === '..') {
+      throw new Error('Invalid download filename');
+    }
+    const filePath = path.join(dir, name);
     fs.writeFileSync(filePath, Buffer.from(result.data));
     return filePath;
   }
