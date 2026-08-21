@@ -44,6 +44,7 @@ import { buildIdentityUpdateTx, IDENTITY_EXPIRY_DELTA } from './identity/update.
 import { DEFAULT_TX_EXPIRY_DELTA } from './tx/payment.js';
 import { VDXF_KEYS, makeSubDD, assertContentmultimapValueSizes } from './onboarding/vdxf.js';
 import { WorkspaceClient } from './workspace/index.js';
+import { advertisedIdentity, parseListingKind, type ListingKind } from './hosting/kinds.js';
 
 /**
  * Compute a transaction expiry height from the current chain tip.
@@ -462,13 +463,20 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
-   * Register a new identity on the Junction41.
-   * J41 creates a subID under agentplatform@ with your R-address.
-   * 
-   * @param name - Desired agent name (e.g. "myagent")
-   * @returns Identity info once registered
+   * Register a new identity on Junction41.
+   * J41 mints a subID under the kind parent (sovagent@ / sovcompute@ / sovdata@).
+   * While those roots are flags:0 the platform may mint under agentplatform@ and
+   * carry kind in the identity content map — trust the returned `identity`.
+   *
+   * @param name - Desired leaf name (e.g. "myagent") or a fully-qualified identity
+   * @param network - Chain
+   * @param opts.kind - Listing kind. Required by the platform; defaults to agent.
    */
-  async register(name: string, network: 'verus' | 'verustest' = 'verustest'): Promise<{ identity: string; iAddress: string }> {
+  async register(
+    name: string,
+    network: 'verus' | 'verustest' = 'verustest',
+    opts?: { kind?: ListingKind },
+  ): Promise<{ identity: string; iAddress: string; kind: ListingKind }> {
     const previousNetwork = this.networkType;
     this.networkType = network;
     try {
@@ -479,12 +487,14 @@ export class J41Agent extends EventEmitter {
     }
 
     const kp = this.keypair!;
+    const kind: ListingKind = parseListingKind(opts?.kind) || 'agent';
+    const preview = advertisedIdentity(name, kind);
 
-    console.log(`[J41] Registering "${name}.agentplatform@"...`);
+    console.log(`[J41] Registering "${preview}" (kind=${kind})...`);
 
     // Step 1: Request challenge
     console.log(`[J41] Requesting challenge...`);
-    const challengeResp = await this._client.onboard(name, kp.address, kp.pubkey);
+    const challengeResp = await this._client.onboard(name, kp.address, kp.pubkey, kind);
 
     if (challengeResp.status !== 'challenge') {
       throw new Error(`Unexpected response: ${JSON.stringify(challengeResp)}`);
@@ -506,8 +516,9 @@ export class J41Agent extends EventEmitter {
 
     // Step 3: Submit with signature
     const result = await this._client.onboardWithSignature(
-      name, kp.address, kp.pubkey, challenge, token, signature
+      name, kp.address, kp.pubkey, challenge, token, signature, kind
     );
+    const knownIdentity = challengeResp.identity || result.identity || preview;
 
     // Poll for completion (blocks can take 1-15 minutes depending on network)
     console.log(`[J41] Waiting for block confirmation (this can take several minutes)...`);
@@ -532,7 +543,7 @@ export class J41Agent extends EventEmitter {
       throw new RegistrationTimeoutError(
         result.onboardId,
         status.status,
-        `${name}.agentplatform@`,
+        knownIdentity,
       );
     }
 
@@ -568,7 +579,7 @@ export class J41Agent extends EventEmitter {
     console.log(`[J41] ✅ Registered: ${this.identityName} (${this.iAddress})`);
     this.emit('registered', { identity: this.identityName, iAddress: this.iAddress });
 
-    return { identity: this.identityName, iAddress: this.iAddress };
+    return { identity: this.identityName, iAddress: this.iAddress, kind };
     } catch (err) {
       // Rollback networkType on failure to prevent corrupted state
       this.networkType = previousNetwork;

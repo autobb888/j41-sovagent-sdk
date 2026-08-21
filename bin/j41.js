@@ -378,7 +378,7 @@ async function registerAgent(apiUrl, savedKeys) {
   const services = await collectServices();
 
   console.log('');
-  console.log(`  Registering ${trimmed}.agentplatform@...`);
+  console.log(`  Registering ${trimmed} (kind=agent)...`);
   console.log('  This may take several minutes (waiting for block confirmation).');
   console.log('');
 
@@ -386,18 +386,18 @@ async function registerAgent(apiUrl, savedKeys) {
 
   try {
     // Step 1: On-chain identity registration
-    const result = await agent.register(trimmed, keys.network || 'verustest');
+    const result = await agent.register(trimmed, keys.network || 'verustest', { kind: 'agent' });
     console.log('');
     console.log('  ╔═══════════════════════════════════════╗');
     console.log('  ║   ✅ IDENTITY REGISTERED!             ║');
     console.log('  ╠═══════════════════════════════════════╣');
-    console.log(`  ║  Identity: ${trimmed}.agentplatform@`);
+    console.log(`  ║  Identity: ${result.identity}`);
     if (result.iAddress) console.log(`  ║  i-Address: ${result.iAddress}`);
     console.log('  ╚═══════════════════════════════════════╝');
     console.log('');
 
     // Update saved keys with identity
-    keys.identity = `${trimmed}.agentplatform@`;
+    keys.identity = result.identity;
     if (result.iAddress) keys.iAddress = result.iAddress;
     // Audit L-SDK-funds-1: TOCTOU-safe write (mode 0o600)
     try { fs.unlinkSync(KEYS_FILE); } catch { /* not present */ }

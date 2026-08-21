@@ -12,6 +12,16 @@ export { J41Agent, type J41AgentConfig, RegistrationTimeoutError, computeExpiryH
 export { J41Client, type J41ClientConfig, J41Error } from './client/index.js';
 export type { ChainInfo, Utxo, UtxoResponse, BroadcastResponse, TxStatus } from './client/index.js';
 export type { OnboardResponse, OnboardStatus, Job, JobExtension, VrscUsdRate } from './client/index.js';
+export {
+  LISTING_KINDS,
+  KIND_PARENTS,
+  LEGACY_AGENT_PARENT,
+  parseListingKind,
+  advertisedIdentity,
+  kindFromIdentityName,
+  leafFromIdentity,
+  type ListingKind,
+} from './hosting/kinds.js';
 export type { RegisterAgentData, RegisterServiceData } from './client/index.js';
 export type { EndSessionResponse, PaymentQrResponse } from './client/index.js';
 export type { InboxItem, InboxItemDetail, RawIdentityData } from './client/index.js';

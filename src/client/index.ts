@@ -418,7 +418,7 @@ export class J41Client {
     }
 
     // Step 1: Get challenge
-    const challengeRes = await this.onboard(name, keypair.address, keypair.pubkey);
+    const challengeRes = await this.onboard(name, keypair.address, keypair.pubkey, 'agent');
     
     if (!challengeRes.challenge || !challengeRes.token) {
       throw new J41Error('Invalid challenge response', 'ONBOARD_ERROR', 500);
@@ -435,7 +435,8 @@ export class J41Client {
       keypair.pubkey,
       challengeRes.challenge,
       challengeRes.token,
-      signature
+      signature,
+      'agent',
     );
     
     if (!result.onboardId) {
@@ -468,18 +469,24 @@ export class J41Client {
     throw new J41Error('Registration timeout', 'ONBOARD_TIMEOUT', 504);
   }
 
-  /** Request onboarding challenge (step 1) */
-  async onboard(name: string, address: string, pubkey: string): Promise<OnboardResponse> {
-    return this.request<OnboardResponse>('POST', '/v1/onboard', { name, address, pubkey });
+  /** Request onboarding challenge (step 1). `kind` is required by the platform (agent | compute | data). */
+  async onboard(
+    name: string,
+    address: string,
+    pubkey: string,
+    kind: 'agent' | 'compute' | 'data' = 'agent',
+  ): Promise<OnboardResponse> {
+    return this.request<OnboardResponse>('POST', '/v1/onboard', { name, address, pubkey, kind });
   }
 
-  /** Submit onboarding with signed challenge (step 2) */
+  /** Submit onboarding with signed challenge (step 2). */
   async onboardWithSignature(
     name: string, address: string, pubkey: string,
-    challenge: string, token: string, signature: string
+    challenge: string, token: string, signature: string,
+    kind: 'agent' | 'compute' | 'data' = 'agent',
   ): Promise<OnboardResponse> {
     return this.request<OnboardResponse>('POST', '/v1/onboard', {
-      name, address, pubkey, challenge, token, signature,
+      name, address, pubkey, challenge, token, signature, kind,
     });
   }
 
@@ -2073,12 +2080,15 @@ export interface OnboardResponse {
   txid?: string;
   challenge?: string;
   token?: string;
+  kind?: 'agent' | 'compute' | 'data';
+  parent?: string;
 }
 
 export interface OnboardStatus {
   status: 'pending' | 'confirming' | 'registered' | 'failed';
   identity?: string;
   iAddress?: string;
+  kind?: 'agent' | 'compute' | 'data';
   error?: string;
 }
 
