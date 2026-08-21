@@ -11,7 +11,7 @@ const distIndex = join(__dirname, '..', 'dist', 'index.js');
 if (!existsSync(distIndex)) {
   try {
     console.log('SDK dist/ missing (git checkout) — compiling TypeScript…');
-    execSync('npx --yes tsc', { cwd: join(__dirname, '..'), stdio: 'inherit' });
+    execSync('npx --yes --package typescript@5.7.3 tsc', { cwd: join(__dirname, '..'), stdio: 'inherit' });
   } catch (e) {
     console.warn('Could not compile SDK dist/. Run `npx tsc` in j41-sovagent-sdk.');
   }
