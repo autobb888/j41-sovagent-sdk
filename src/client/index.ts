@@ -12,6 +12,7 @@ import { signMessage as verusSignMessage, verifyMessage as verusVerifyMessage } 
 import { assertNotProtocolMessage } from '../signing/messages.js';
 import { assertConsentChallengeHash } from '../auth/challenge-hash.js';
 import type { WorkspaceStatus, WorkspaceTokenResponse } from '../workspace/index.js';
+import type { ListingKind } from '../hosting/kinds.js';
 
 export interface J41ClientConfig {
   /** J41 API base URL (e.g. https://api.junction41.io) */
@@ -418,7 +419,7 @@ export class J41Client {
     }
 
     // Step 1: Get challenge
-    const challengeRes = await this.onboard(name, keypair.address, keypair.pubkey);
+    const challengeRes = await this.onboard(name, keypair.address, keypair.pubkey, 'agent');
     
     if (!challengeRes.challenge || !challengeRes.token) {
       throw new J41Error('Invalid challenge response', 'ONBOARD_ERROR', 500);
@@ -435,7 +436,8 @@ export class J41Client {
       keypair.pubkey,
       challengeRes.challenge,
       challengeRes.token,
-      signature
+      signature,
+      'agent',
     );
     
     if (!result.onboardId) {
@@ -468,18 +470,24 @@ export class J41Client {
     throw new J41Error('Registration timeout', 'ONBOARD_TIMEOUT', 504);
   }
 
-  /** Request onboarding challenge (step 1) */
-  async onboard(name: string, address: string, pubkey: string): Promise<OnboardResponse> {
-    return this.request<OnboardResponse>('POST', '/v1/onboard', { name, address, pubkey });
+  /** Request onboarding challenge (step 1). `kind` is required by the platform. */
+  async onboard(
+    name: string,
+    address: string,
+    pubkey: string,
+    kind: ListingKind = 'agent',
+  ): Promise<OnboardResponse> {
+    return this.request<OnboardResponse>('POST', '/v1/onboard', { name, address, pubkey, kind });
   }
 
-  /** Submit onboarding with signed challenge (step 2) */
+  /** Submit onboarding with signed challenge (step 2). */
   async onboardWithSignature(
     name: string, address: string, pubkey: string,
-    challenge: string, token: string, signature: string
+    challenge: string, token: string, signature: string,
+    kind: ListingKind = 'agent',
   ): Promise<OnboardResponse> {
     return this.request<OnboardResponse>('POST', '/v1/onboard', {
-      name, address, pubkey, challenge, token, signature,
+      name, address, pubkey, challenge, token, signature, kind,
     });
   }
 
@@ -549,6 +557,17 @@ export class J41Client {
   /** Get job details */
   async getJob(jobId: string): Promise<Job> {
     const res = await this.request<{ data: Job }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}`);
+    return res.data;
+  }
+
+  /** Seller stores sealed SSH credentials for a gpu-rental job. */
+  async postRentalSecret(jobId: string, body: unknown) {
+    return this.request('POST', `/v1/jobs/${encodeURIComponent(jobId)}/rental-secret`, body);
+  }
+
+  /** Buyer opens sealed rental access for a gpu-rental job. */
+  async getRentalAccess(jobId: string) {
+    const res = await this.request<{ data: unknown }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/rental-access`);
     return res.data;
   }
 
@@ -2073,12 +2092,15 @@ export interface OnboardResponse {
   txid?: string;
   challenge?: string;
   token?: string;
+  kind?: ListingKind;
+  parent?: string;
 }
 
 export interface OnboardStatus {
   status: 'pending' | 'confirming' | 'registered' | 'failed';
   identity?: string;
   iAddress?: string;
+  kind?: ListingKind;
   error?: string;
 }
 
@@ -2110,8 +2132,8 @@ export interface RegisterServiceData {
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
   resolutionWindow?: number;
   refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
-  /** 'agent' (default) or 'api-endpoint' — the latter is for raw LLM access sellers */
-  serviceType?: 'agent' | 'api-endpoint';
+  /** 'agent' (default), 'api-endpoint' (raw LLM), or 'gpu-rental' (Cat-1 raw GPU) */
+  serviceType?: 'agent' | 'api-endpoint' | 'gpu-rental';
   /** Seller's upstream LLM URL. Private: only returned on owner reads, not public listings. */
   endpointUrl?: string;
   /** Per-model token pricing for api-endpoint services */

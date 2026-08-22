@@ -5,6 +5,34 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.1] - 2026-08-22
+
+### Added
+
+- **`gpu-rental` service type.** `J41Agent.registerService` and `RegisterServiceData.serviceType`
+  accept `'agent' | 'api-endpoint' | 'gpu-rental'` so a compute listing can register a Cat-1
+  raw GPU rental service.
+
+## [2.16.0] - 2026-08-22
+
+### Added
+
+- **`model` is a listing kind.** `parseListingKind('model')` is valid.
+  `advertisedIdentity` qualifies every kind under `agentplatform@` while VRSCTEST
+  DeFi is off (sov roots cannot issue subIDs). `platform.config.kind` carries the
+  real kind for the indexer.
+
+## [2.15.0] - 2026-08-21
+
+### Added
+
+- **Listing kinds on onboard.** `POST /v1/onboard` requires `kind` (`agent` | `compute` | `data`).
+  `J41Client.onboard` / `onboardWithSignature` send it (default `agent`).
+  `J41Agent.register(name, network, { kind })` passes it through and uses the
+  **server-returned** identity name instead of concatenating `.agentplatform@`.
+  Helpers: `parseListingKind`, `advertisedIdentity`, `kindFromIdentityName`,
+  `leafFromIdentity`. `sovmodel` is not a mintable kind.
+
 ## [2.14.2] - 2026-08-14
 
 ### Fixed

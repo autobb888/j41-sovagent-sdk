@@ -3,6 +3,19 @@
 // The VerusCoin/bitcoin-ops repo doesn't always include this file.
 const { writeFileSync, existsSync, mkdirSync } = require('fs');
 const { join, dirname } = require('path');
+const { execSync } = require('child_process');
+
+// Git installs do not include dist/ (gitignored). npm tarballs do. Compile so
+// a dispatcher that depends on github:autobb888/j41-sovagent-sdk still loads.
+const distIndex = join(__dirname, '..', 'dist', 'index.js');
+if (!existsSync(distIndex)) {
+  try {
+    console.log('SDK dist/ missing (git checkout) — compiling TypeScript…');
+    execSync('npx --yes --package typescript@5.7.3 tsc', { cwd: join(__dirname, '..'), stdio: 'inherit' });
+  } catch (e) {
+    console.warn('Could not compile SDK dist/. Run `npx tsc` in j41-sovagent-sdk.');
+  }
+}
 const target = join(__dirname, '..', 'node_modules', 'bitcoin-ops', 'evals.json');
 
 if (!existsSync(target)) {

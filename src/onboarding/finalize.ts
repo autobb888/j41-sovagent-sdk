@@ -67,6 +67,8 @@ export interface PlatformConfigInput {
   datapolicy?: string | DataPolicyInput;
   trustlevel?: string;
   disputeresolution?: string;
+  /** Listing kind. Required while every kind mints under agentplatform@. */
+  kind?: 'agent' | 'compute' | 'data' | 'model';
 }
 
 /** workspace.capability JSON blob */
