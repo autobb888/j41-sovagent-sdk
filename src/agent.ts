@@ -825,10 +825,10 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
-   * Push a VDXF status update on-chain (active/inactive).
+   * Push a VDXF status update on-chain (active/inactive/invite).
    * Builds and broadcasts a signed identity update tx.
    */
-  private async _updateOnChainStatus(status: 'active' | 'inactive'): Promise<string | null> {
+  private async _updateOnChainStatus(status: 'active' | 'inactive' | 'invite'): Promise<string | null> {
     if (!this.wif || !this.iAddress) return null;
 
     try {
@@ -1374,10 +1374,10 @@ export class J41Agent extends EventEmitter {
   }
 
   /**
-   * Update the on-chain agent.status VDXF key ('active' or 'inactive').
+   * Update the on-chain agent.status VDXF key ('active', 'inactive', or 'invite').
    * Builds and broadcasts an identity update TX.
    */
-  async setOnChainStatus(status: 'active' | 'inactive'): Promise<string> {
+  async setOnChainStatus(status: 'active' | 'inactive' | 'invite'): Promise<string> {
     if (!this.wif || !this.iAddress) throw new Error('WIF and i-address required');
     await this.login();
 
