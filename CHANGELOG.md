@@ -5,6 +5,15 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.0] - 2026-08-22
+
+### Added
+
+- **`model` is a listing kind.** `parseListingKind('model')` is valid.
+  `advertisedIdentity` qualifies every kind under `agentplatform@` while VRSCTEST
+  DeFi is off (sov roots cannot issue subIDs). `platform.config.kind` carries the
+  real kind for the indexer.
+
 ## [2.15.0] - 2026-08-21
 
 ### Added

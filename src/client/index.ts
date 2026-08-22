@@ -12,6 +12,7 @@ import { signMessage as verusSignMessage, verifyMessage as verusVerifyMessage } 
 import { assertNotProtocolMessage } from '../signing/messages.js';
 import { assertConsentChallengeHash } from '../auth/challenge-hash.js';
 import type { WorkspaceStatus, WorkspaceTokenResponse } from '../workspace/index.js';
+import type { ListingKind } from '../hosting/kinds.js';
 
 export interface J41ClientConfig {
   /** J41 API base URL (e.g. https://api.junction41.io) */
@@ -469,12 +470,12 @@ export class J41Client {
     throw new J41Error('Registration timeout', 'ONBOARD_TIMEOUT', 504);
   }
 
-  /** Request onboarding challenge (step 1). `kind` is required by the platform (agent | compute | data). */
+  /** Request onboarding challenge (step 1). `kind` is required by the platform. */
   async onboard(
     name: string,
     address: string,
     pubkey: string,
-    kind: 'agent' | 'compute' | 'data' = 'agent',
+    kind: ListingKind = 'agent',
   ): Promise<OnboardResponse> {
     return this.request<OnboardResponse>('POST', '/v1/onboard', { name, address, pubkey, kind });
   }
@@ -483,7 +484,7 @@ export class J41Client {
   async onboardWithSignature(
     name: string, address: string, pubkey: string,
     challenge: string, token: string, signature: string,
-    kind: 'agent' | 'compute' | 'data' = 'agent',
+    kind: ListingKind = 'agent',
   ): Promise<OnboardResponse> {
     return this.request<OnboardResponse>('POST', '/v1/onboard', {
       name, address, pubkey, challenge, token, signature, kind,
@@ -2080,7 +2081,7 @@ export interface OnboardResponse {
   txid?: string;
   challenge?: string;
   token?: string;
-  kind?: 'agent' | 'compute' | 'data';
+  kind?: ListingKind;
   parent?: string;
 }
 
@@ -2088,7 +2089,7 @@ export interface OnboardStatus {
   status: 'pending' | 'confirming' | 'registered' | 'failed';
   identity?: string;
   iAddress?: string;
-  kind?: 'agent' | 'compute' | 'data';
+  kind?: ListingKind;
   error?: string;
 }
 
