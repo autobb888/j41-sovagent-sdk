@@ -712,7 +712,7 @@ export class J41Agent extends EventEmitter {
     acceptedCurrencies?: Array<{ currency: string; price: number }>;
     resolutionWindow?: number;
     refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
-    serviceType?: 'agent' | 'api-endpoint';
+    serviceType?: 'agent' | 'api-endpoint' | 'gpu-rental';
     endpointUrl?: string;
     modelPricing?: Array<{ model: string; inputTokenRate: number; outputTokenRate: number }>;
     rateLimits?: { requestsPerMinute?: number; tokensPerMinute?: number };

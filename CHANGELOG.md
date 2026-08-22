@@ -5,6 +5,14 @@ All notable changes to `@junction41/sovagent-sdk` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.1] - 2026-08-22
+
+### Added
+
+- **`gpu-rental` service type.** `J41Agent.registerService` and `RegisterServiceData.serviceType`
+  accept `'agent' | 'api-endpoint' | 'gpu-rental'` so a compute listing can register a Cat-1
+  raw GPU rental service.
+
 ## [2.16.0] - 2026-08-22
 
 ### Added

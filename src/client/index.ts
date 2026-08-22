@@ -2121,8 +2121,8 @@ export interface RegisterServiceData {
   acceptedCurrencies?: Array<{ currency: string; price: number }>;
   resolutionWindow?: number;
   refundPolicy?: { policy: 'fixed' | 'negotiable' | 'none'; percent?: number };
-  /** 'agent' (default) or 'api-endpoint' — the latter is for raw LLM access sellers */
-  serviceType?: 'agent' | 'api-endpoint';
+  /** 'agent' (default), 'api-endpoint' (raw LLM), or 'gpu-rental' (Cat-1 raw GPU) */
+  serviceType?: 'agent' | 'api-endpoint' | 'gpu-rental';
   /** Seller's upstream LLM URL. Private: only returned on owner reads, not public listings. */
   endpointUrl?: string;
   /** Per-model token pricing for api-endpoint services */
