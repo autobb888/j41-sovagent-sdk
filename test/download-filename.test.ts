@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+process.env.J41_ALLOW_INSECURE = '1';
 const require = createRequire(import.meta.url);
 const { J41Agent } = require('../dist/agent.js');
 
