@@ -560,6 +560,17 @@ export class J41Client {
     return res.data;
   }
 
+  /** Seller stores sealed SSH credentials for a gpu-rental job. */
+  async postRentalSecret(jobId: string, body: unknown) {
+    return this.request('POST', `/v1/jobs/${encodeURIComponent(jobId)}/rental-secret`, body);
+  }
+
+  /** Buyer opens sealed rental access for a gpu-rental job. */
+  async getRentalAccess(jobId: string) {
+    const res = await this.request<{ data: unknown }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/rental-access`);
+    return res.data;
+  }
+
   /** Get job witness (platform-signed record for the on-chain VDXF write) */
   async getJobWitness(jobId: string): Promise<JobWitnessResponse> {
     const res = await this.request<{ data: JobWitnessResponse }>('GET', `/v1/jobs/${encodeURIComponent(jobId)}/witness`);
